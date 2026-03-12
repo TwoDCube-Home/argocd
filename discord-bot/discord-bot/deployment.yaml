@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: discord-bot
-          image: ghcr.io/twodcube-home/discord-bot:c74455e2d7b1b5d5e3e80cb4cbe27cbb22a9b63c
+          image: ghcr.io/twodcube-home/discord-bot:c74455ebb6c7ba84b6df50f75c9aed995b9e7c0e
           env:
             - name: DISCORD_TOKEN
               valueFrom:
