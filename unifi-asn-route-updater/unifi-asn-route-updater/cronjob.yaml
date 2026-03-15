@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unifi-asn-route-updater
+  labels:
+    app: unifi-asn-route-updater
+spec:
+  schedule: "0 6 * * 1"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: unifi-asn-route-updater
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: unifi-asn-route-updater
+              image: ghcr.io/twodcube-home/unifi-asn-route-updater:580e89ee9439988fda25541e3e7743f03d10fe77
+              env:
+                - name: ASNLOOKUP_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: unifi-asn-route-updater
+                      key: asnlookup-api-token
+                - name: UNIFI_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: unifi-asn-route-updater
+                      key: unifi-api-token
