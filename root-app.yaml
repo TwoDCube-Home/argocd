@@ -1,13 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: unifi-asn-route-updater
+  name: root
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    path: unifi-asn-route-updater/unifi-asn-route-updater
+    path: applications
     repoURL: https://github.com/TwoDCube-Home/argocd
   destination:
     name: in-cluster
@@ -15,5 +15,4 @@ spec:
   syncPolicy:
     automated: {}
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true

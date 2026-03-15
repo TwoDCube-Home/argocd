@@ -1,13 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: onepassword-secretstore
+  name: unifi-asn-route-updater
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    path: onepassword-secretstore/onepassword-secretstore
+    path: unifi-asn-route-updater
     repoURL: https://github.com/TwoDCube-Home/argocd
   destination:
     name: in-cluster
