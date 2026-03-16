@@ -19,7 +19,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: unifi-asn-route-updater
-              image: ghcr.io/twodcube-home/unifi-asn-route-updater:580e89ee9439988fda25541e3e7743f03d10fe77
+              image: ghcr.io/twodcube-home/unifi-asn-route-updater:366cebef0419ea8ce27f5d47b541df15f432138e
               env:
                 - name: ASNLOOKUP_API_TOKEN
                   valueFrom:
