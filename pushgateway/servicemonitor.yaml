@@ -12,3 +12,10 @@ spec:
     - port: metrics
       interval: 30s
       honorLabels: true
+      basicAuth:
+        username:
+          name: pushgateway
+          key: username
+        password:
+          name: pushgateway
+          key: password
