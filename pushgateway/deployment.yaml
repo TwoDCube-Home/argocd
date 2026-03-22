@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pushgateway
+  labels:
+    app: pushgateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pushgateway
+  template:
+    metadata:
+      labels:
+        app: pushgateway
+    spec:
+      containers:
+        - name: pushgateway
+          image: prom/pushgateway:v1.11.0
+          args:
+            - --web.config.file=/etc/pushgateway/web.yml
+          ports:
+            - containerPort: 9091
+              name: metrics
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          livenessProbe:
+            tcpSocket:
+              port: 9091
+            initialDelaySeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: 9091
+            initialDelaySeconds: 5
+          volumeMounts:
+            - name: web-config
+              mountPath: /etc/pushgateway
+              readOnly: true
+      volumes:
+        - name: web-config
+          secret:
+            secretName: pushgateway
