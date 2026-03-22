@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: pushgateway
-          image: prom/pushgateway:v1.11.0
+          image: prom/pushgateway:v1.10.0
           args:
             - --web.config.file=/etc/pushgateway/web.yml
           ports:
