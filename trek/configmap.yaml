@@ -11,4 +11,4 @@ data:
   OIDC_ISSUER: https://dex-dev.apps.okd4.home.zoltanszepesi.com
   OIDC_CLIENT_ID: trek
   OIDC_DISPLAY_NAME: OpenShift
-  OIDC_ONLY: "true"
+  OIDC_ONLY: "false"
