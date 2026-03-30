@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex
+  labels:
+    app: dex
+data:
+  config.yaml: |
+    issuer: https://dex-dev.apps.okd4.home.zoltanszepesi.com
+    web:
+      http: 0.0.0.0:5556
+    storage:
+      type: sqlite3
+      config:
+        file: /var/dex/dex.db
+    logger:
+      level: info
+      format: json
+    oauth2:
+      skipApprovalScreen: true
+    connectors:
+      - type: openshift
+        id: openshift
+        name: OpenShift
+        config:
+          issuer: https://api.okd4.home.zoltanszepesi.com:6443
+          clientID: dex
+          clientSecret: $DEX_OPENSHIFT_CLIENT_SECRET
+          redirectURI: https://dex-dev.apps.okd4.home.zoltanszepesi.com/callback
+          insecureCA: true
+    staticClients:
+      - id: trek
+        name: TREK
+        secret: $DEX_TREK_CLIENT_SECRET
+        redirectURIs:
+          - https://trek-dev.apps.okd4.home.zoltanszepesi.com/api/auth/oidc/callback
+    enablePasswordDB: false
