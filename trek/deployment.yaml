@@ -16,6 +16,10 @@ spec:
       labels:
         app: trek
     spec:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       containers:
         - name: trek
           image: mauriceboe/trek:2.7.0
