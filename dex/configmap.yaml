@@ -31,7 +31,7 @@ data:
     staticClients:
       - id: trek
         name: TREK
-        secret: $DEX_TREK_CLIENT_SECRET
+        secretEnv: DEX_TREK_CLIENT_SECRET
         redirectURIs:
           - https://trek-dev.apps.okd4.home.zoltanszepesi.com/api/auth/oidc/callback
     enablePasswordDB: false
