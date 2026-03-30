@@ -10,9 +10,9 @@ data:
     web:
       http: 0.0.0.0:5556
     storage:
-      type: kubernetes
+      type: sqlite3
       config:
-        inCluster: true
+        file: /var/dex/dex.db
     logger:
       level: info
       format: json
