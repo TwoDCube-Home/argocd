@@ -16,7 +16,6 @@ spec:
       labels:
         app: trek
     spec:
-      hostUsers: false
       dnsConfig:
         options:
           - name: ndots
@@ -24,8 +23,11 @@ spec:
       containers:
         - name: trek
           image: mauriceboe/trek:2.7.1
-          securityContext:
-            runAsUser: 1000
+          command:
+            - node
+            - --import
+            - tsx
+            - src/index.ts
           ports:
             - containerPort: 3000
               name: http
