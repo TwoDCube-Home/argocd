@@ -22,15 +22,20 @@ spec:
             value: "1"
       containers:
         - name: trek
-          image: mauriceboe/trek:2.7.1
-          command:
-            - node
-            - --import
-            - tsx
-            - src/index.ts
+          image: mauriceboe/trek:2.7.2
           ports:
             - containerPort: 3000
               name: http
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - SETUID
+                - SETGID
           envFrom:
             - configMapRef:
                 name: trek
@@ -45,6 +50,11 @@ spec:
                 secretKeyRef:
                   name: trek
                   key: oidc-client-secret
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trek
+                  key: encryption-key
           resources:
             requests:
               cpu: 50m
@@ -56,19 +66,29 @@ spec:
             httpGet:
               path: /api/health
               port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /api/health
               port: 3000
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: data
               mountPath: /app/data
             - name: uploads
               mountPath: /app/uploads
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -76,3 +96,6 @@ spec:
         - name: uploads
           persistentVolumeClaim:
             claimName: trek-uploads
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

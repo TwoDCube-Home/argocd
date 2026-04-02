@@ -7,7 +7,9 @@ metadata:
 data:
   NODE_ENV: production
   PORT: "3000"
-  TRUST_PROXY: "true"
+  TRUST_PROXY: "1"
+  FORCE_HTTPS: "true"
+  ALLOW_INTERNAL_NETWORK: "false"
   OIDC_ISSUER: https://dex-dev.apps.okd4.home.zoltanszepesi.com
   OIDC_CLIENT_ID: trek
   OIDC_DISPLAY_NAME: OpenShift
