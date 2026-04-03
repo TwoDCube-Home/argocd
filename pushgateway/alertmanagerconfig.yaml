@@ -20,3 +20,4 @@ spec:
         - apiURL:
             name: ae2-discord-webhook
             key: url
+          message: '<@&1489692289080098876> {{ template "discord.default.message" . }}'
