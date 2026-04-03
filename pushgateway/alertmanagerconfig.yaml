@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1beta1
+kind: AlertmanagerConfig
+metadata:
+  name: ae2-discord
+spec:
+  route:
+    groupBy:
+      - alertname
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+    receiver: ae2-discord
+    matchers:
+      - name: alertname
+        matchType: =~
+        value: "AE2.*"
+  receivers:
+    - name: ae2-discord
+      discordConfigs:
+        - apiURL:
+            name: ae2-discord-webhook
+            key: url
