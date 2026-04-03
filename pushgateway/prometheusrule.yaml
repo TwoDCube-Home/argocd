@@ -6,7 +6,7 @@ spec:
   groups:
     - name: ae2-fluids
       rules:
-        - alert: AE2CryotheumLow
+        - alert: GTNHCryotheumLow
           expr: ae2_fluid_amount{name="cryotheum"} < 86400000
           for: 5m
           labels:
@@ -14,7 +14,7 @@ spec:
           annotations:
             summary: Gelid Cryotheum is running low
             description: "Cryotheum is at {{ $value | humanize }} mB (threshold: 86.4M mB)"
-        - alert: AE2NaqFuelLow
+        - alert: GTNHNaqFuelLow
           expr: ae2_fluid_amount{name="naquadah based liquid fuel mkii"} < 500000
           for: 5m
           labels:
@@ -22,7 +22,7 @@ spec:
           annotations:
             summary: Naquadah Based Liquid Fuel MkII is running low
             description: "Naq Fuel MkII is at {{ $value | humanize }} mB (threshold: 500K mB)"
-        - alert: AE2SeparationCatalystLow
+        - alert: GTNHSeparationCatalystLow
           expr: ae2_fluid_amount{name="molten.atomic separation catalyst"} < 1728000
           for: 5m
           labels:
@@ -30,3 +30,11 @@ spec:
           annotations:
             summary: Molten Atomic Separation Catalyst is running low
             description: "Separation Catalyst is at {{ $value | humanize }} mB (threshold: 1.73M mB)"
+        - alert: GTNHBatteryLow
+          expr: lgt_eu_stored / lgt_eu_max < 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: LGT battery is below 5%
+            description: "LGT battery is at {{ $value | humanizePercentage }}"

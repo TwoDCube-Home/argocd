@@ -13,7 +13,7 @@ spec:
     matchers:
       - name: alertname
         matchType: =~
-        value: "AE2.*"
+        value: "GTNH.*"
   receivers:
     - name: ae2-discord
       discordConfigs:
