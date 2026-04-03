@@ -8,7 +8,7 @@ spec:
       - alertname
     groupWait: 30s
     groupInterval: 5m
-    repeatInterval: 12h
+    repeatInterval: 2h
     receiver: ae2-discord
     matchers:
       - name: alertname
