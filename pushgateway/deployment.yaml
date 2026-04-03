@@ -19,6 +19,7 @@ spec:
           image: prom/pushgateway:v1.10.0
           args:
             - --web.config.file=/etc/pushgateway/web.yml
+            - --persistence.file=/data/metrics
           ports:
             - containerPort: 9091
               name: metrics
@@ -41,7 +42,12 @@ spec:
             - name: web-config
               mountPath: /etc/pushgateway
               readOnly: true
+            - name: data
+              mountPath: /data
       volumes:
         - name: web-config
           secret:
             secretName: pushgateway
+        - name: data
+          persistentVolumeClaim:
+            claimName: pushgateway-data
