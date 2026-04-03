@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ae2-fluid-alerts
+spec:
+  groups:
+    - name: ae2-fluids
+      rules:
+        - alert: AE2CryotheumLow
+          expr: ae2_fluid_amount{name="cryotheum"} < 86400000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Gelid Cryotheum is running low
+            description: "Cryotheum is at {{ $value | humanize }} mB (threshold: 86.4M mB)"
+        - alert: AE2NaqFuelLow
+          expr: ae2_fluid_amount{name="naquadah based liquid fuel mkii"} < 500000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Naquadah Based Liquid Fuel MkII is running low
+            description: "Naq Fuel MkII is at {{ $value | humanize }} mB (threshold: 500K mB)"
+        - alert: AE2SeparationCatalystLow
+          expr: ae2_fluid_amount{name="molten.atomic separation catalyst"} < 1728000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Molten Atomic Separation Catalyst is running low
+            description: "Separation Catalyst is at {{ $value | humanize }} mB (threshold: 1.73M mB)"
