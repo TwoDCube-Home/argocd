@@ -22,7 +22,7 @@ spec:
             value: "1"
       containers:
         - name: trek
-          image: mauriceboe/trek:2.7.2
+          image: mauriceboe/trek:2.8.0
           ports:
             - containerPort: 3000
               name: http
