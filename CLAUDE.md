@@ -16,7 +16,7 @@ The repo uses the **App of Apps** pattern: `root-app.yaml` points ArgoCD at the 
 
 | Name | What it is | Image |
 |------|-----------|-------|
-| **Trek** | Wiki/documentation app with OIDC auth via Dex | `mauriceboe/trek:2.8.0` |
+| **Trek** | Wiki/documentation app with OIDC auth via Dex | `mauriceboe/trek:2.8.4` |
 | **Dex** | OIDC identity provider (OpenShift connector) | `ghcr.io/dexidp/dex:v2.41.1` |
 | **Discord Bot** | Custom Discord bot | `ghcr.io/twodcube-home/discord-bot:<git-sha>` |
 | **PushGateway** | Prometheus PushGateway with GTNH game alerts sent to Discord | `prom/pushgateway:v1.10.0` |
