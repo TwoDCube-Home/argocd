@@ -1,0 +1,43 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Keep This File Updated
+
+Whenever a new application, component, or significant configuration is added to this repository, update this file to reflect the change. This ensures future Claude Code instances have accurate context.
+
+## Overview
+
+This is a GitOps repository for ArgoCD, deploying applications to an OpenShift/OKD4 cluster (`okd4.home.zoltanszepesi.com`). All applications deploy to the `dev` namespace on the in-cluster destination.
+
+The repo uses the **App of Apps** pattern: `root-app.yaml` points ArgoCD at the `applications/` directory, which contains ArgoCD Application manifests that each reference a subdirectory of this repo containing raw Kubernetes manifests (no Helm or Kustomize).
+
+## Deployed Applications
+
+| Name | What it is | Image |
+|------|-----------|-------|
+| **Trek** | Wiki/documentation app with OIDC auth via Dex | `mauriceboe/trek:2.8.0` |
+| **Dex** | OIDC identity provider (OpenShift connector) | `ghcr.io/dexidp/dex:v2.41.1` |
+| **Discord Bot** | Custom Discord bot | `ghcr.io/twodcube-home/discord-bot:<git-sha>` |
+| **PushGateway** | Prometheus PushGateway with GTNH game alerts sent to Discord | `prom/pushgateway:v1.10.0` |
+| **Unifi ASN Route Updater** | CronJob (Mondays 6AM) updating UniFi routes from ASN lookups | `ghcr.io/twodcube-home/unifi-asn-route-updater:<git-sha>` |
+| **OnePassword SecretStore** | External Secrets Operator ClusterSecretStore for 1Password | N/A (CRD only) |
+
+## Repository Structure
+
+- `root-app.yaml` — Root ArgoCD Application (App of Apps)
+- `applications/` — ArgoCD Application manifests (one per app)
+- `<app-name>/` — Kubernetes manifests for each application (deployments, services, routes, secrets, configmaps, PVCs, etc.)
+
+## Key Relationships
+
+- **Trek + Dex**: Trek uses Dex as its OIDC provider. Dex connects to OpenShift for authentication.
+- **PushGateway + AlertManager**: PushGateway has a `PrometheusRule` (GTNH game alerts) and an `AlertManagerConfig` that routes alerts to a Discord webhook.
+- **All secrets**: Managed via External Secrets Operator pulling from 1Password (configured by the OnePassword SecretStore).
+
+## Common Patterns
+
+- All apps use automated sync with `ServerSideApply=true` and `CreateNamespace=true`
+- OpenShift Routes are used for ingress (not Ingress resources)
+- Secrets are ExternalSecret CRDs referencing the `onepassword-secretstore`
+- No Helm charts or Kustomize — all plain YAML manifests
