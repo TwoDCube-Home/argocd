@@ -38,9 +38,9 @@ Usage
 -----
     python3 calculate_alert_thresholds.py
 
-Prints the proposed 1-day thresholds (to write into the alert ``expr``) and an
-audit of how long the thresholds currently in ``prometheusrule.yaml`` actually
-last.
+Prints the proposed thresholds for the configured ``ALERT_WINDOW_SECONDS`` (to
+write into the alert ``expr``) and an audit of how long the thresholds currently
+in ``prometheusrule.yaml`` actually last.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY  # 604,800
 REACTOR_COUNT = 5
 
 #: Alert policy: fire when a fluid has less than this much runtime left.
-ALERT_WINDOW_SECONDS = SECONDS_PER_DAY
+ALERT_WINDOW_SECONDS = SECONDS_PER_WEEK
 
 
 @dataclass(frozen=True)
@@ -98,14 +98,14 @@ class Fluid:
 # Naq Fuel Mk-II configuration of the Large Naquadah Reactor.
 # (display, ae2_fluid_amount name label, rate L/s from wiki, current mB threshold)
 FLUIDS: list[Fluid] = [
-    Fluid("Cryotheum (coolant)",           "cryotheum",                         1000.0, 432_000_000),
-    Fluid("Naq Fuel Mk-II (fuel)",         "naquadah based liquid fuel mkii",      4.57,   1_974_240),
-    Fluid("Separation Catalyst (booster)", "molten.atomic separation catalyst",   20.0,   8_640_000),
+    Fluid("Cryotheum (coolant)",           "cryotheum",                         1000.0, 3_024_000_000),
+    Fluid("Naq Fuel Mk-II (fuel)",         "naquadah based liquid fuel mkii",      4.57,    13_819_680),
+    Fluid("Separation Catalyst (booster)", "molten.atomic separation catalyst",   20.0,    60_480_000),
 ]
 
 
 def main() -> None:
-    """Print the proposed 1-week thresholds and audit the deployed ones."""
+    """Print the proposed thresholds for the configured window and audit the deployed ones."""
     window_days = ALERT_WINDOW_SECONDS / SECONDS_PER_DAY
     print(f"Reactors: {REACTOR_COUNT}")
     print(f"Alert window: {ALERT_WINDOW_SECONDS:,} seconds ({window_days:g} days)\n")

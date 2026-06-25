@@ -11,7 +11,7 @@ The in-game AE2 network pushes fluid stock levels into PushGateway as the
 `PrometheusRule` fires a warning to Discord when a monitored fluid drops below a
 threshold representing a fixed amount of **remaining runtime**.
 
-**Alert policy: fire when a fluid has less than 1 day of supply left, assuming
+**Alert policy: fire when a fluid has less than 7 days of supply left, assuming
 all 5 reactors draw continuously.**
 
 (The battery alert, `GTNHBatteryLow`, is a percentage-of-capacity check and is
@@ -36,9 +36,9 @@ script is the single source of truth, not this prose.
   wiki's `L/s` rate is numerically the same as **mB per second**.
 - Rates are **per real-world second**, assuming the reactors run continuously
   (the conservative, worst-case assumption for "how long will it last").
-- 1 day = 24 × 60 × 60 = **86,400 seconds**, and the draw is `REACTOR_COUNT`
+- 7 days = 7 × 24 × 60 × 60 = **604,800 seconds**, and the draw is `REACTOR_COUNT`
   reactors at once, so
-  `threshold_mB = rate_L_per_s × REACTOR_COUNT × 86400` (= `rate_L_per_s × 432000`
+  `threshold_mB = rate_L_per_s × REACTOR_COUNT × 604800` (= `rate_L_per_s × 3024000`
   at 5 reactors).
 
 ## How to (re)calculate — ALWAYS use the Python script, never compute by hand
@@ -50,7 +50,7 @@ of truth and is auditable and reproducible. To recalculate:
 1. Update the `FLUIDS` table at the top of `calculate_alert_thresholds.py` from
    the wiki Summary table — each entry is
    `(display name, ae2_fluid_amount "name" label, rate L/s, current threshold mB)`.
-   (Change `ALERT_WINDOW_SECONDS` too if the 1-week policy changes.)
+   (Change `ALERT_WINDOW_SECONDS` too if the runtime-window policy changes.)
 2. Run it:
 
    ```bash

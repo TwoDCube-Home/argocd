@@ -7,32 +7,32 @@ spec:
     - name: ae2-fluids
       rules:
         - alert: GTNHCryotheumLow
-          expr: max by (name) (ae2_fluid_amount{name="cryotheum"}) < 432000000
+          expr: max by (name) (ae2_fluid_amount{name="cryotheum"}) < 3024000000
           for: 5m
           keep_firing_for: 10m
           labels:
             severity: warning
           annotations:
             summary: Gelid Cryotheum is running low
-            description: "Cryotheum is at {{ $value | humanize }} mB (threshold: 432M mB / 1 day @ 5 reactors)"
+            description: "Cryotheum is at {{ $value | humanize }} mB (threshold: 3.02G mB / 7 days @ 5 reactors)"
         - alert: GTNHNaqFuelLow
-          expr: max by (name) (ae2_fluid_amount{name="naquadah based liquid fuel mkii"}) < 1974240
+          expr: max by (name) (ae2_fluid_amount{name="naquadah based liquid fuel mkii"}) < 13819680
           for: 5m
           keep_firing_for: 10m
           labels:
             severity: warning
           annotations:
             summary: Naquadah Based Liquid Fuel MkII is running low
-            description: "Naq Fuel MkII is at {{ $value | humanize }} mB (threshold: 1.97M mB / 1 day @ 5 reactors)"
+            description: "Naq Fuel MkII is at {{ $value | humanize }} mB (threshold: 13.8M mB / 7 days @ 5 reactors)"
         - alert: GTNHSeparationCatalystLow
-          expr: max by (name) (ae2_fluid_amount{name="molten.atomic separation catalyst"}) < 8640000
+          expr: max by (name) (ae2_fluid_amount{name="molten.atomic separation catalyst"}) < 60480000
           for: 5m
           keep_firing_for: 10m
           labels:
             severity: warning
           annotations:
             summary: Molten Atomic Separation Catalyst is running low
-            description: "Separation Catalyst is at {{ $value | humanize }} mB (threshold: 8.64M mB / 1 day @ 5 reactors)"
+            description: "Separation Catalyst is at {{ $value | humanize }} mB (threshold: 60.5M mB / 7 days @ 5 reactors)"
         - alert: GTNHBatteryLow
           expr: lgt_eu_stored / lgt_eu_max < 0.05
           for: 5m
