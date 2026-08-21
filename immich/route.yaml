@@ -1,0 +1,18 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: immich
+  labels:
+    app: immich
+  annotations:
+    # Long timeout so large photo/video uploads from the mobile app are not cut off.
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  to:
+    kind: Service
+    name: immich-server
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

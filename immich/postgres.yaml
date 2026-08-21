@@ -1,0 +1,60 @@
+# Immich database, managed by the Crunchy Postgres Operator (installed cluster-wide
+# in openshift-operators). Immich v3 needs Postgres >=14 with a vector extension;
+# Crunchy 5.8 images ship pgvector 0.8.1, which is inside Immich's accepted
+# range (>=0.7, <0.9). The app is pointed at it via DB_VECTOR_EXTENSION=pgvector.
+#
+# The operator generates the connection secret immich-postgres-pguser-immich
+# (keys: host, port, user, password, dbname) consumed by the helm values in
+# applications/immich.yaml - no 1Password entry is needed for this database.
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: immich-postgres
+  labels:
+    app: immich
+spec:
+  postgresVersion: 17
+  instances:
+    - name: instance1
+      replicas: 1
+      dataVolumeClaimSpec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+  users:
+    - name: immich
+      databases:
+        - immich
+      # Immich expects superuser: it creates extensions itself and its built-in
+      # backup feature uses pg_dumpall, which needs superuser.
+      options: "SUPERUSER"
+  authentication:
+    # PGO's default pg_hba only accepts TLS ("hostssl") client connections, but
+    # Immich's node-postgres client does not negotiate TLS. Allow the immich user
+    # to authenticate over plain in-cluster connections instead. Custom rules
+    # replace the default catch-all; PGO still prepends its mandatory system rules
+    # (local peer auth, certificate auth for replication).
+    rules:
+      - connection: host
+        users:
+          - immich
+        method: scram-sha-256
+  backups:
+    pgbackrest:
+      global:
+        # Keep the two most recent weekly full backups on the repo volume.
+        repo1-retention-full: "2"
+      repos:
+        - name: repo1
+          schedules:
+            # Weekly full backup, Sunday 03:00.
+            full: "0 3 * * 0"
+          volume:
+            volumeClaimSpec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 10Gi

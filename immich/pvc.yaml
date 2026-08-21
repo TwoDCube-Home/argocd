@@ -1,0 +1,14 @@
+# Library volume for all photos/videos. The upstream chart refuses to create
+# this itself and requires an existing claim (immich.persistence.library.existingClaim).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-library
+  labels:
+    app: immich
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
