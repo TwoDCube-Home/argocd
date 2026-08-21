@@ -22,7 +22,7 @@ The repo uses the **App of Apps** pattern: `root-app.yaml` points ArgoCD at the 
 | **PushGateway** | Prometheus PushGateway with GTNH game alerts sent to Discord | `prom/pushgateway:v1.10.0` |
 | **Unifi ASN Route Updater** | CronJob (Mondays 6AM) updating UniFi routes from ASN lookups | `ghcr.io/twodcube-home/unifi-asn-route-updater:<git-sha>` |
 | **OnePassword SecretStore** | External Secrets Operator ClusterSecretStore for 1Password | N/A (CRD only) |
-| **Immich** | Self-hosted photo/video backup (official Helm chart + Crunchy Postgres) | `ghcr.io/immich-app/immich-server:v3.0.0` |
+| **Immich** | Self-hosted photo/video backup (official Helm chart + Crunchy Postgres) | `ghcr.io/immich-app/immich-server:v3.1.0` |
 
 ## Repository Structure
 
