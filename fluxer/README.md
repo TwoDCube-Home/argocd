@@ -52,6 +52,17 @@ when this was written (2026-10-11). Third-party images are pinned the same way.
   Fluxer's identity. A Sync-hook Job grants that account access to the other three
   buckets through bucket policies, then proves read and write on all four with
   Fluxer's credentials. Both mechanisms are per the ODF 4.22 docs.
+  - **Principals differ from the docs.** The ODF 4.22 docs show account-name
+    principals. This cluster's NooBaa (ODF 4.22.5) rejects them as
+    `MalformedPolicy: Invalid principal` and accepts the account's IAM ARN
+    instead.
+  - **Where the ARNs come from.** An OBC account cannot look up its own ID (S3
+    ACL owners are generic, STS is NotImplemented, IAM is AccessDenied). The ID is
+    only on the cluster-scoped ObjectBucket, which this namespace-scoped Argo CD
+    cannot read, so the four ARNs are recorded in the `fluxer-s3-accounts`
+    ConfigMap.
+  - **If an OBC is recreated,** it gets a new account. The Job then fails the sync
+    with the command that prints the new ARNs.
 - **S3 TLS trust.** NooBaa's `s3.openshift-storage.svc` certificate is signed by the
   OpenShift service CA (`configmap-service-ca.yaml`). api and worker add it with
   `NODE_EXTRA_CA_CERTS`. media-proxy, the only Rust service that talks to S3, uses
@@ -65,8 +76,11 @@ when this was written (2026-10-11). Third-party images are pinned the same way.
     has a file capability and exec fails without it.
   - Caddy images: emptyDirs for `/config` and `/data`.
 - **NetworkPolicy** `fluxer-backends`: Valkey and NATS have no auth in upstream
-  (Compose hides them on a private bridge network), so only `app=fluxer` pods may
-  reach them, and Meilisearch.
+  (Compose hides them on a private bridge network). Only `app=fluxer` pods may
+  reach them, or Meilisearch.
+- **Loopback-only health endpoint.** The gateway's `/_health/ready` answers only
+  loopback callers and returns 403 to a kubelet `httpGet`. Its readiness probe
+  therefore execs `curl 127.0.0.1`, like Compose and upstream's chart.
 - **Data is protected from app deletion:** the OBCs (StorageClass reclaim policy
   `Delete`) and the PostgresCluster carry `argocd.argoproj.io/sync-options: Delete=false`.
 
