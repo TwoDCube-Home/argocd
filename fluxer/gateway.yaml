@@ -98,11 +98,20 @@ spec:
               port: http
             periodSeconds: 10
             failureThreshold: 30
-          # Compose's healthcheck; /_health/ready reports whether the node accepts sessions.
+          # Compose's healthcheck; /_health/ready reports whether the node accepts
+          # sessions. It answers loopback callers only (a kubelet httpGet from the
+          # node address gets 403), so probe it from inside the container like
+          # Compose and upstream's own Helm chart do.
           readinessProbe:
-            httpGet:
-              path: /_health/ready
-              port: http
+            exec:
+              command:
+                - curl
+                - -fsS
+                - -o
+                - /dev/null
+                - --max-time
+                - "2"
+                - http://127.0.0.1:8080/_health/ready
             periodSeconds: 10
             timeoutSeconds: 3
           livenessProbe:
