@@ -7,11 +7,11 @@
 #
 # What is covered:
 #   - happy path: one put-bucket-policy per non-CDN bucket, signed by that bucket's
-#     OWNER credentials, with a policy that grants the CDN OBC account and keeps the
-#     owner; then put/head/delete probes on all four buckets with Fluxer's (CDN)
-#     credentials
-#   - input validation: missing environment and an empty CA bundle exit 2 with an
-#     actionable message
+#     OWN credentials, with a policy whose principals are exactly that bucket's
+#     account ARN and the CDN account ARN; then put/head/delete probes on all four
+#     buckets with Fluxer's (CDN) credentials
+#   - input validation: missing environment, an empty CA bundle and a principal
+#     that is not an account ARN exit 2 with an actionable message
 #   - failure propagation: an AccessDenied from S3 fails the script
 #
 # Usage: fluxer/tests/bucket-policy-script.test.sh   (needs bash, yq, jq)
@@ -48,8 +48,15 @@ if [ -n "${FAKE_DENY_BUCKET:-}" ] && [ "$bucket" = "$FAKE_DENY_BUCKET" ]; then
   exit 254
 fi
 if [ "$sub" = "put-bucket-policy" ]; then
-  printf '%s' "$policy" | jq -e --arg b "$bucket" --arg owner "obc-account.${bucket}@noobaa.io" \
-    --arg grantee "obc-account.fluxer@noobaa.io" '
+  # Owner ARNs encode the bucket in the fake account ID (see base_env below).
+  case "$bucket" in
+    fluxer-uploads) owner="arn:aws:iam::0000000000000000000000a1:root" ;;
+    fluxer-reports) owner="arn:aws:iam::0000000000000000000000a2:root" ;;
+    fluxer-harvests) owner="arn:aws:iam::0000000000000000000000a3:root" ;;
+    *) echo "fake aws: policy for unexpected bucket $bucket" >&2; exit 1 ;;
+  esac
+  printf '%s' "$policy" | jq -e --arg b "$bucket" --arg owner "$owner" \
+    --arg grantee "arn:aws:iam::0000000000000000000000c0:root" '
       .Version == "2012-10-17"
       and ([.Statement[] | select(.Effect == "Allow" and .Action == ["s3:*"]
              and .Resource == ["arn:aws:s3:::" + $b, "arn:aws:s3:::" + $b + "/*"])
@@ -72,6 +79,10 @@ base_env=(
   "UPLOADS_BUCKET=fluxer-uploads" "UPLOADS_ACCESS_KEY_ID=uploads-key" "UPLOADS_SECRET_ACCESS_KEY=uploads-secret"
   "REPORTS_BUCKET=fluxer-reports" "REPORTS_ACCESS_KEY_ID=reports-key" "REPORTS_SECRET_ACCESS_KEY=reports-secret"
   "HARVESTS_BUCKET=fluxer-harvests" "HARVESTS_ACCESS_KEY_ID=harvests-key" "HARVESTS_SECRET_ACCESS_KEY=harvests-secret"
+  "CDN_ACCOUNT_ARN=arn:aws:iam::0000000000000000000000c0:root"
+  "UPLOADS_ACCOUNT_ARN=arn:aws:iam::0000000000000000000000a1:root"
+  "REPORTS_ACCOUNT_ARN=arn:aws:iam::0000000000000000000000a2:root"
+  "HARVESTS_ACCOUNT_ARN=arn:aws:iam::0000000000000000000000a3:root"
 )
 
 failures=0
@@ -125,6 +136,15 @@ if [ "$rc" -eq 2 ] && grep -q 'fluxer-service-ca' "$work/out" && [ ! -s "$work/a
   pass "empty CA bundle exits 2 and points at the fluxer-service-ca ConfigMap"
 else
   fail "empty CA: rc=$rc, output: $(cat "$work/out")"
+fi
+
+# The account-name form from the ODF docs example, which NooBaa 4.22 rejects.
+run_script "REPORTS_ACCOUNT_ARN=obc-account.fluxer-reports.6acbb4a5@noobaa.io"
+if [ "$rc" -eq 2 ] && grep -q 'REPORTS_ACCOUNT_ARN=.* is not a NooBaa account ARN' "$work/out" \
+  && grep -q 'additionalState.arn' "$work/out" && [ ! -s "$work/aws.log" ]; then
+  pass "a non-ARN principal exits 2 with the refresh command and calls no S3 API"
+else
+  fail "bad ARN: rc=$rc, output: $(cat "$work/out")"
 fi
 
 # --- failure propagation -----------------------------------------------------
