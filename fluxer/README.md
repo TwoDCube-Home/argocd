@@ -104,10 +104,12 @@ credentials are not in 1Password; PGO and NooBaa generate them in-cluster.
 
 1. **DNS:** create `fluxer.twodcube.dev` in Cloudflare. TLS does not depend on it;
    the certificate uses a DNS-01 challenge.
-2. **Setup wizard:** open https://fluxer.twodcube.dev from the LAN. The Route
-   carries an `ip_allowlist` of RFC 1918 ranges because an unconfigured instance
-   lets anyone register, and the first account to finish the wizard becomes admin.
-   Complete the wizard, then remove the annotation from `fluxer-route/route.yaml`.
+2. **Setup wizard:** an unconfigured instance lets anyone register, and the first
+   account to finish the wizard becomes admin. For the first install, the Route
+   carried a `haproxy.router.openshift.io/ip_allowlist` of RFC 1918 ranges until
+   the wizard was done from the LAN. The annotation was removed afterwards (git
+   history has it). Restore it before Fluxer starts against an empty database
+   again, such as a rebuild without a Postgres restore.
 3. **Account recovery:** email is disabled, so there is no email password reset.
    Register a passkey or a second admin before opening registration (upstream
    advice).

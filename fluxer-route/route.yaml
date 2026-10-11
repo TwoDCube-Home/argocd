@@ -21,11 +21,6 @@ metadata:
     app: fluxer
   annotations:
     haproxy.router.openshift.io/timeout: 3600s
-    # SETUP GUARD. Upstream: an unconfigured instance accepts registrations from
-    # anyone and the first account to finish the setup wizard becomes the full
-    # admin. Until that wizard is done, only private (LAN) addresses get through.
-    # Remove this annotation in a follow-up commit once setup is complete.
-    haproxy.router.openshift.io/ip_allowlist: 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 spec:
   host: fluxer.twodcube.dev
   to:
