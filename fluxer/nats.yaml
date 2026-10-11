@@ -75,13 +75,18 @@ spec:
             - name: data
               mountPath: /data
   volumeClaimTemplates:
-    - metadata:
+    # apiVersion, kind and volumeMode are what the API server stores; spelling
+    # them out keeps Argo CD from reporting the StatefulSet as OutOfSync.
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
         labels:
           app: fluxer
       spec:
         accessModes:
           - ReadWriteOnce
+        volumeMode: Filesystem
         resources:
           requests:
             storage: 5Gi
