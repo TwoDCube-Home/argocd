@@ -1,0 +1,40 @@
+# Public entry point: fluxer.twodcube.dev -> fluxer-edge:8080. The router
+# terminates TLS with the cert-manager certificate (fluxer/certificate.yaml) and
+# forwards plain HTTP; the edge does all path routing, so the Route needs a single
+# rule, as upstream's "behind your own reverse proxy" guide prescribes.
+#
+# Why this lives in its own Application (applications/fluxer-route.yaml): the API
+# server rejects a Route whose spec.tls.externalCertificate Secret does not exist
+# yet or is not readable by the router, and Argo CD dry-runs every resource of an
+# Application before applying any of them. In the main app this Route would block
+# the very sync that creates the Certificate and the router RoleBinding. Isolated
+# here, it just retries until cert-manager has issued fluxer-tls.
+#
+# WebSockets (/gateway, /livekit) are covered by the IngressController's default
+# 1h tunnel timeout; the 1h server timeout below is for large uploads through the
+# media relay, matching the Immich route in this repo.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: fluxer
+  labels:
+    app: fluxer
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+    # SETUP GUARD. Upstream: an unconfigured instance accepts registrations from
+    # anyone and the first account to finish the setup wizard becomes the full
+    # admin. Until that wizard is done, only private (LAN) addresses get through.
+    # Remove this annotation in a follow-up commit once setup is complete.
+    haproxy.router.openshift.io/ip_allowlist: 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+spec:
+  host: fluxer.twodcube.dev
+  to:
+    kind: Service
+    name: fluxer-edge
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+    externalCertificate:
+      name: fluxer-tls

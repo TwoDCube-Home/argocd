@@ -1,0 +1,108 @@
+# Valkey: Fluxer's KV/cache and the home of pending file deletions, cache purges and
+# the thread auto-archive schedule. Upstream's configuration docs ("Volumes and
+# buckets") say this data is NOT disposable, so it runs with AOF persistence on a PVC
+# and `noeviction`, exactly as Compose does.
+#
+# Valkey has no password in the upstream stack; networkpolicy.yaml limits who can
+# reach it, because the `dev` namespace is shared with other apps.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxer-valkey
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-valkey
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/part-of: fluxer
+spec:
+  serviceName: fluxer-valkey
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-valkey
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-valkey
+        app.kubernetes.io/component: valkey
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: valkey
+          image: docker.io/valkey/valkey:9.1-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+          # Same flags as Compose; the image entrypoint only drops privileges when it
+          # starts as root, which it never does under OpenShift's restricted-v2 SCC.
+          args:
+            - valkey-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --dir
+            - /data
+            - --maxmemory
+            - 192mb
+            - --maxmemory-policy
+            - noeviction
+          ports:
+            - name: valkey
+              containerPort: 6379
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: fluxer
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-valkey
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-valkey
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey

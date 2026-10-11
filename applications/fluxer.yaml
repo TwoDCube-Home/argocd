@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluxer
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    path: fluxer
+    repoURL: https://github.com/TwoDCube-Home/argocd
+  destination:
+    name: in-cluster
+    namespace: dev
+  syncPolicy:
+    automated: {}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    # The fluxer-s3-bucket-policy Sync hook fails the sync if NooBaa is briefly
+    # unavailable; Argo CD does not re-attempt a failed automated sync of the same
+    # revision on its own, so retry a few times.
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

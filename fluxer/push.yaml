@@ -1,0 +1,84 @@
+# Fluxer push delivery service (Compose service `push`). It consumes work from NATS
+# and is not called over HTTP by anything, so it has no Service. Deliberately so:
+# a Service named fluxer-push would also make Kubernetes inject
+# FLUXER_PUSH_SERVICE_PORT, which this binary reads as its own listen port.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-push
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-push
+    app.kubernetes.io/component: push
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-push
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-push
+        app.kubernetes.io/component: push
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: push
+          image: ghcr.io/fluxerapp/fluxer-push:2026.1011.135938@sha256:73f74e482b26a4df86e11f211955e3fa3085f8c4d89878184cef72741d533f7a
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # Compose's healthcheck: the binary probes its own health endpoint.
+          startupProbe:
+            exec:
+              command: ["/usr/local/bin/fluxer-push", "healthcheck"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            exec:
+              command: ["/usr/local/bin/fluxer-push", "healthcheck"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi

@@ -1,0 +1,90 @@
+# Fluxer static assets (Caddy-based image serving /web, /emoji, /libs, /avatars,
+# /badges, /desktop). Compose service `static-proxy`; takes no configuration.
+#
+# Caddy keeps state in XDG_CONFIG_HOME=/config and XDG_DATA_HOME=/data, which the
+# image owns as UID 65532; emptyDirs make them writable for OpenShift's random UID.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-static-proxy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-static-proxy
+    app.kubernetes.io/component: static-proxy
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-static-proxy
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-static-proxy
+        app.kubernetes.io/component: static-proxy
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: static-proxy
+          image: ghcr.io/fluxerapp/fluxer-static:2026.1010.212914@sha256:864aa943be4f985c532554ccd93df28a13321396f35411cdbcb865230023858a
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # Compose's healthcheck fetches a known asset.
+          readinessProbe:
+            httpGet:
+              path: /avatars/0.png
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /avatars/0.png
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /config
+            - name: caddy-data
+              mountPath: /data
+      volumes:
+        - name: caddy-config
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: caddy-data
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-static-proxy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-static-proxy
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-static-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

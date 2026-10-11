@@ -1,0 +1,92 @@
+# Fluxer web client host (self-hosted build of app-proxy). Serves the SPA for every
+# path the edge does not route elsewhere. Like Compose, it gets ONLY its own
+# variables, not the shared fluxer-env: a FLUXER_S3_PUBLIC_ENDPOINT here would be
+# added to its Content Security Policy, which must not happen for an internal URL.
+#
+# Branding and CSP knobs (FLUXER_APP_*_URL, FLUXER_CSP_EXTRA_*) are empty in Compose
+# and can be added here when needed; the admin dashboard can also set branding.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-app-proxy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-app-proxy
+    app.kubernetes.io/component: app-proxy
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-app-proxy
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-app-proxy
+        app.kubernetes.io/component: app-proxy
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app-proxy
+          image: ghcr.io/fluxerapp/fluxer-app-proxy-self-hosted:2026.1011.135948@sha256:7398e9129f22e6bbcd5f9abdf6425bc47fd0f203b7fc7a551d34491422d39d8d
+          env:
+            - name: FLUXER_APP_PROXY_PORT
+              value: "8080"
+            # Polls the instance discovery document (served by the API through the
+            # edge's internal :8088 listener, as in Compose) for branding/CSP changes.
+            - name: DISCOVERY_UPSTREAM_URL
+              value: http://fluxer-edge:8088/.well-known/fluxer
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-app-proxy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-app-proxy
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-app-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

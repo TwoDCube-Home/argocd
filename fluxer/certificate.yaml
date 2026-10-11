@@ -1,0 +1,54 @@
+# TLS certificate for fluxer.twodcube.dev from the cluster's letsencrypt-prod
+# ClusterIssuer (cert-manager Operator for Red Hat OpenShift, ACME DNS-01 through
+# Cloudflare), served by the Route through spec.tls.externalCertificate.
+#
+# Per the OCP 4.22 docs ("Create a route with externally managed certificates"):
+#   - the Secret must be kubernetes.io/tls in the Route's namespace (cert-manager
+#     writes exactly that);
+#   - the router service account needs get/list/watch on that one Secret, granted
+#     by the Role/RoleBinding below;
+#   - the router checks, via SubjectAccessReview, that the Route's creator (the
+#     Argo CD application controller) can read the Secret too.
+# cert-manager renews the Secret in place and the router picks up the new
+# certificate without a Route change. The Route itself is in fluxer-route/ (separate
+# Application) because it cannot be created before this Secret exists.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fluxer-tls
+  labels:
+    app: fluxer
+spec:
+  secretName: fluxer-tls
+  dnsNames:
+    - fluxer.twodcube.dev
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fluxer-tls-router-reader
+  labels:
+    app: fluxer
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["fluxer-tls"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fluxer-tls-router-reader
+  labels:
+    app: fluxer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fluxer-tls-router-reader
+subjects:
+  - kind: ServiceAccount
+    name: router
+    namespace: openshift-ingress

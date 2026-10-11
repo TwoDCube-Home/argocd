@@ -1,0 +1,113 @@
+# Fluxer background worker: same image as the API, started with the worker entry
+# point (Compose service `worker`). It runs every job lane and the cron scheduler,
+# so exactly one instance may run at a time, hence the Recreate strategy.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-worker
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-worker
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/fluxerapp/fluxer-api:2026.1011.125745@sha256:896a2ffdc9a79cec8e7b17462dbad95ffdca0c4b2618c79ba5cc0a5ce4a43b6d
+          # Compose's `command` replaces the image CMD only; the image ENTRYPOINT
+          # (docker-entrypoint.sh) stays, so this belongs in args.
+          args: ["node", "dist/WorkerEntrypoint.js"]
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: NODE_OPTIONS
+              value: --enable-source-maps
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/fluxer/service-ca/service-ca.crt
+            - name: FLUXER_API_WORKER_MODE
+              value: all_lanes
+            - name: FLUXER_API_WORKER_ENABLE_CRON_SCHEDULER
+              value: "true"
+            - name: FLUXER_POSTGRES_MAX_CONNECTIONS
+              value: "25"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # Compose's healthcheck: the worker touches this file while its loop runs.
+          startupProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "const age=Date.now()-require('node:fs').statSync('/tmp/fluxer-worker-heartbeat').mtimeMs;if(age>30000){console.error('worker heartbeat is '+Math.round(age)+'ms old');process.exit(1)}"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "const age=Date.now()-require('node:fs').statSync('/tmp/fluxer-worker-heartbeat').mtimeMs;if(age>30000){console.error('worker heartbeat is '+Math.round(age)+'ms old');process.exit(1)}"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2560Mi
+          volumeMounts:
+            - name: service-ca
+              mountPath: /etc/fluxer/service-ca
+              readOnly: true
+      volumes:
+        - name: service-ca
+          configMap:
+            name: fluxer-service-ca

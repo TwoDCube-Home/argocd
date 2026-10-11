@@ -1,0 +1,22 @@
+# OpenShift service CA bundle, injected by the service-ca operator into the
+# `service-ca.crt` key. NooBaa's in-cluster S3 endpoint (s3.openshift-storage.svc)
+# presents a certificate signed by this CA, which no Fluxer image trusts by default.
+#
+# Consumers (all mount it at /etc/fluxer/service-ca):
+#   - api, worker:  NODE_EXTRA_CA_CERTS=<file>  (Node adds it to its built-in roots)
+#   - media-proxy:  SSL_CERT_DIR=<dir> plus SSL_CERT_FILE=<system bundle>. The Rust
+#                   stack (reqwest -> rustls-platform-verifier -> rustls-native-certs
+#                   0.8) replaces the system store with SSL_CERT_FILE when it is set
+#                   and adds every regular file in SSL_CERT_DIR, so both are needed.
+#   - the bucket-policy hook Job: aws --ca-bundle <file>
+#
+# The data key is intentionally absent from this manifest so the injected value
+# is never overwritten by a sync.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxer-service-ca
+  labels:
+    app: fluxer
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"

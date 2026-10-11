@@ -1,0 +1,195 @@
+# Fluxer internal svc "unfurl" (link previews): router + single shard over NATS, the
+# unfurl/unfurl-shard pair in Compose. Same shape and rationale as svc-snowflakes.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-unfurl
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-unfurl
+    app.kubernetes.io/component: unfurl-router
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-unfurl
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-unfurl
+        app.kubernetes.io/component: unfurl-router
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: unfurl
+          image: ghcr.io/fluxerapp/fluxer-unfurl:2026.1010.212913@sha256:4917e2d9ad0a2b5b0043ca86b4573ee268e00faac1b902f4b33b3305ce013f91
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_SVC_NAME
+              value: unfurl
+            - name: FLUXER_SVC_MODE
+              value: router
+          ports:
+            - name: http
+              containerPort: 8090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # /_healthz is process liveness; /_health also reflects dependencies.
+          startupProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-unfurl-shard
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-unfurl-shard
+    app.kubernetes.io/component: unfurl-shard
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-unfurl-shard
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-unfurl-shard
+        app.kubernetes.io/component: unfurl-shard
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: unfurl-shard
+          image: ghcr.io/fluxerapp/fluxer-unfurl:2026.1010.212913@sha256:4917e2d9ad0a2b5b0043ca86b4573ee268e00faac1b902f4b33b3305ce013f91
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_SVC_NAME
+              value: unfurl
+            - name: FLUXER_SVC_MODE
+              value: shard
+            - name: FLUXER_SVC_SHARD_ID
+              value: "0"
+            # Unfurled images are fetched through the media proxy (internal address).
+            - name: FLUXER_MEDIA_PROXY_ENDPOINT
+              value: http://fluxer-media-proxy:8080
+          ports:
+            - name: http
+              containerPort: 8090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

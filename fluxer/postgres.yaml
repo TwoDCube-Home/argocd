@@ -1,0 +1,94 @@
+# Fluxer database, managed by the Crunchy Postgres Operator (installed cluster-wide
+# in openshift-operators, v5.8.9). Replaces Compose's `postgres` service
+# (postgres:16-alpine), so the major version stays at 16.
+#
+# Fluxer stores everything in a key-value table it creates itself at startup
+# (CREATE TABLE IF NOT EXISTS fluxer_kv ..., unqualified) and needs no extensions,
+# so the fluxer user does not need SUPERUSER. Postgres 15+ no longer lets ordinary
+# users create objects in `public`; the autoCreateUserSchema annotation (PGO >= 5.6.1)
+# has PGO create a `fluxer` schema owned by the fluxer user, which is first on the
+# default search_path ("$user", public), so Fluxer's tables land there.
+#
+# Connections use TLS: PGO's default pg_hba only accepts hostssl, and every Fluxer
+# client verifies the server against FLUXER_POSTGRES_SSL_CA, which the workloads read
+# from the fluxer-postgres-cluster-cert Secret. The fluxer-postgres-pguser-fluxer
+# Secret's `uri` (host fluxer-postgres-primary.dev.svc) becomes FLUXER_POSTGRES_URL.
+#
+# `Delete=false` keeps Argo CD from deleting the cluster (and with it the data
+# volumes) if the Application is ever deleted.
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: fluxer-postgres
+  labels:
+    app: fluxer
+  annotations:
+    postgres-operator.crunchydata.com/autoCreateUserSchema: "true"
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  postgresVersion: 16
+  instances:
+    - name: instance1
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          memory: 2Gi
+      dataVolumeClaimSpec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 20Gi
+  users:
+    - name: fluxer
+      databases:
+        - fluxer
+  patroni:
+    dynamicConfiguration:
+      postgresql:
+        # Compose's tuning flags (deploy/self-hosting/docker-compose.yml, `postgres`
+        # command), minus shared_preload_libraries, which PGO manages itself.
+        # Connection budget: api 25 + worker 25 + users-shard 20 + messages-shard 20.
+        parameters:
+          max_connections: 150
+          shared_buffers: 512MB
+          effective_cache_size: 2GB
+          work_mem: 8MB
+          maintenance_work_mem: 256MB
+          autovacuum_work_mem: 128MB
+          random_page_cost: "1.1"
+          effective_io_concurrency: 200
+          default_statistics_target: 200
+          jit: "off"
+          min_wal_size: 512MB
+          max_wal_size: 2GB
+          checkpoint_completion_target: "0.9"
+          wal_buffers: 16MB
+          wal_compression: zstd
+          bgwriter_delay: 50ms
+          bgwriter_lru_maxpages: 1000
+          autovacuum_vacuum_scale_factor: "0.05"
+          autovacuum_analyze_scale_factor: "0.02"
+          autovacuum_vacuum_cost_limit: 2000
+          track_io_timing: "on"
+  backups:
+    pgbackrest:
+      global:
+        # Keep the two most recent weekly full backups (and their incrementals).
+        repo1-retention-full: "2"
+      repos:
+        - name: repo1
+          schedules:
+            # Weekly full backup Sunday 03:30 (Immich runs at 03:00), daily incremental.
+            full: "30 3 * * 0"
+            incremental: "30 3 * * 1-6"
+          volume:
+            volumeClaimSpec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 40Gi

@@ -1,0 +1,92 @@
+# Shared, non-secret Fluxer configuration. This is the Kubernetes translation of the
+# `x-fluxer-env` block in upstream deploy/self-hosting/docker-compose.yml, rendered
+# for FLUXER_DOMAIN=fluxer.twodcube.dev behind a TLS-terminating front proxy.
+#
+# It is loaded with envFrom by every workload that Compose gives `x-fluxer-env`
+# (api, worker, gateway, media-proxy, push, admin and the svc routers/shards).
+# app-proxy, static-proxy and edge deliberately do NOT get it, matching Compose.
+#
+# Deviations from Compose, and why:
+#   - Internal hostnames carry the `fluxer-` prefix (fluxer-api, fluxer-nats, ...)
+#     because the stack shares the `dev` namespace with other apps.
+#   - Postgres is Crunchy PGO with TLS (FLUXER_POSTGRES_SSL=true); the URL and CA
+#     are injected per container from PGO's Secrets, so no host/password here.
+#   - S3 is NooBaa (ODF Multicloud Object Gateway) over its in-cluster HTTPS service
+#     instead of the bundled SeaweedFS; credentials come from the fluxer-cdn OBC.
+#   - Keys that Compose sets to an empty string are omitted: Fluxer treats an empty
+#     value and an unset one the same, and omitting them keeps this file readable.
+#
+# Workload-specific values (ports, worker mode, svc names, ...) are set on the
+# containers themselves, which takes precedence over envFrom.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxer-env
+  labels:
+    app: fluxer
+data:
+  FLUXER_ENV: production
+  FLUXER_SELF_HOSTED: "true"
+
+  # Public identity of the instance. The OpenShift Route terminates TLS on 443 and
+  # forwards plain HTTP to the edge (Compose's docker-compose.proxy.yml layout).
+  FLUXER_BASE_DOMAIN: fluxer.twodcube.dev
+  FLUXER_PUBLIC_SCHEME: https
+  FLUXER_PUBLIC_PORT: "443"
+  FLUXER_TRUST_CLIENT_IP_HEADER: "true"
+  FLUXER_APP_ENDPOINT: https://fluxer.twodcube.dev
+  FLUXER_MEDIA_ENDPOINT: https://fluxer.twodcube.dev/media
+  FLUXER_MEDIA_PROXY_PUBLIC_ENDPOINT: https://fluxer.twodcube.dev/media
+  FLUXER_ADMIN_ENDPOINT: https://fluxer.twodcube.dev/admin
+  FLUXER_MARKETING_ENDPOINT: https://fluxer.twodcube.dev
+  FLUXER_MEDIA_PROXY_UPLOAD_RELAY_ENDPOINT: https://fluxer.twodcube.dev/media
+  FLUXER_PASSKEY_RP_ID: fluxer.twodcube.dev
+  FLUXER_PASSKEY_ADDITIONAL_ALLOWED_ORIGINS: https://fluxer.twodcube.dev
+  # Compose's default. Contact address handed to web-push services.
+  FLUXER_VAPID_EMAIL: admin@fluxer.twodcube.dev
+  # Compose's default. Email is disabled (FLUXER_EMAIL_ENABLED unset), see README.
+  FLUXER_EMAIL_FROM_EMAIL: noreply@localhost
+
+  # Internal service addresses.
+  FLUXER_INTERNAL_API_ENDPOINT: http://fluxer-api:8080
+  FLUXER_INTERNAL_MEDIA_PROXY_ENDPOINT: http://fluxer-media-proxy:8080
+  FLUXER_KV_URL: redis://fluxer-valkey:6379/0
+  FLUXER_NATS_URL: nats://fluxer-nats:4222
+  FLUXER_NATS_JETSTREAM_URL: nats://fluxer-nats:4222
+  FLUXER_SVC_NATS_URL: nats://fluxer-nats:4222
+  # One shard per svc (snowflakes, users, gifs, messages, unfurl), as in Compose.
+  FLUXER_SVC_SHARD_COUNT: "1"
+
+  # Postgres (Crunchy PGO). FLUXER_POSTGRES_URL and FLUXER_POSTGRES_SSL_CA are set
+  # per container from PGO's Secrets; PGO only accepts TLS connections by default.
+  FLUXER_DATABASE_BACKEND: postgres
+  FLUXER_POSTGRES_SSL: "true"
+
+  # Search.
+  FLUXER_SEARCH_ENGINE: meilisearch
+  FLUXER_SEARCH_URL: http://fluxer-meilisearch:7700
+
+  # Object storage: NooBaa's in-cluster S3 service. Its certificate is signed by
+  # the OpenShift service CA, which api/worker (NODE_EXTRA_CA_CERTS) and
+  # media-proxy (SSL_CERT_DIR) are pointed at; see the workload manifests.
+  # Browsers never talk to S3: uploads go through media-proxy's relay
+  # (FLUXER_MEDIA_PROXY_UPLOAD_RELAY_KEEP_DIRECT_COUNTRIES unset = everyone relays)
+  # and presigned harvest downloads stay off, so the internal endpoint is also the
+  # presign endpoint, exactly like Compose's bundled SeaweedFS.
+  FLUXER_S3_ENDPOINT: https://s3.openshift-storage.svc:443
+  FLUXER_S3_PUBLIC_ENDPOINT: https://s3.openshift-storage.svc:443
+  FLUXER_S3_REGION: us-east-1
+  FLUXER_S3_FORCE_PATH_STYLE: "true"
+  FLUXER_S3_BUCKET_CDN: fluxer
+  FLUXER_S3_BUCKET_UPLOADS: fluxer-uploads
+  FLUXER_S3_BUCKET_REPORTS: fluxer-reports
+  FLUXER_S3_BUCKET_HARVESTS: fluxer-harvests
+  FLUXER_API_PRESIGNED_HARVEST_DOWNLOADS_ENABLED: "false"
+
+  # Voice (LiveKit). Signalling goes through the edge at /livekit; media uses the
+  # MetalLB addresses in livekit.yaml.
+  FLUXER_LIVEKIT_ENABLED: "true"
+  FLUXER_LIVEKIT_API_KEY: fluxer
+  FLUXER_LIVEKIT_INTERNAL_URL: http://fluxer-livekit:7880
+  FLUXER_LIVEKIT_URL: https://fluxer.twodcube.dev:443/livekit
+  FLUXER_LIVEKIT_DEFAULT_REGION: '{"id":"default","name":"Default","emoji":"🌍","latitude":0,"longitude":0}'

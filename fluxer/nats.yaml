@@ -1,0 +1,103 @@
+# NATS with JetStream: Fluxer's event bus, svc RPC transport and background job
+# queue (JOBS keeps pending jobs up to 7 days, JOBS_DLQ failed jobs up to 30 days).
+# Losing the volume loses queued work, so JetStream stores on a PVC. Same flags as
+# Compose: JetStream on, store dir /data, monitoring on 8222.
+#
+# No auth token in the upstream stack; networkpolicy.yaml restricts access.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxer-nats
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-nats
+    app.kubernetes.io/component: nats
+    app.kubernetes.io/part-of: fluxer
+spec:
+  serviceName: fluxer-nats
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-nats
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-nats
+        app.kubernetes.io/component: nats
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nats
+          image: docker.io/library/nats:2.14-alpine@sha256:4063edae0717ba5f7501bfde75f97fd9b57f5b93597b92c70b6a6fbbf6a74e06
+          # The image entrypoint prefixes `nats-server` when the first arg is a flag.
+          args: ["-js", "-sd", "/data", "-m", "8222"]
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: monitor
+              containerPort: 8222
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthz?js-enabled-only=true
+              port: monitor
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: fluxer
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-nats
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-nats
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-nats
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client

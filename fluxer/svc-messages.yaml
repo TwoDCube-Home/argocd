@@ -1,0 +1,195 @@
+# Fluxer internal svc "messages" (message storage): router + single shard over NATS, the
+# messages/messages-shard pair in Compose. Same shape and rationale as svc-snowflakes.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-messages
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-messages
+    app.kubernetes.io/component: messages-router
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-messages
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-messages
+        app.kubernetes.io/component: messages-router
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: messages
+          image: ghcr.io/fluxerapp/fluxer-messages:2026.1011.113418@sha256:f4a0d1068133b77d3848eb48e118f94bb60e87fbee9a32d553d481c5a7c60db2
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_SVC_NAME
+              value: messages
+            - name: FLUXER_SVC_MODE
+              value: router
+          ports:
+            - name: http
+              containerPort: 8090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # /_healthz is process liveness; /_health also reflects dependencies.
+          startupProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-messages-shard
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-messages-shard
+    app.kubernetes.io/component: messages-shard
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-messages-shard
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-messages-shard
+        app.kubernetes.io/component: messages-shard
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: messages-shard
+          image: ghcr.io/fluxerapp/fluxer-messages:2026.1011.113418@sha256:f4a0d1068133b77d3848eb48e118f94bb60e87fbee9a32d553d481c5a7c60db2
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_SVC_NAME
+              value: messages
+            - name: FLUXER_SVC_MODE
+              value: shard
+            - name: FLUXER_SVC_SHARD_ID
+              value: "0"
+            # The messages shard reads Postgres directly (Compose sets this pool size).
+            - name: FLUXER_POSTGRES_MAX_CONNECTIONS
+              value: "20"
+          ports:
+            - name: http
+              containerPort: 8090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
