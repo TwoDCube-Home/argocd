@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: unfurl
-          image: ghcr.io/fluxerapp/fluxer-unfurl:2026.1010.212913@sha256:4917e2d9ad0a2b5b0043ca86b4573ee268e00faac1b902f4b33b3305ce013f91
+          image: ghcr.io/fluxerapp/fluxer-unfurl:2026.1012.111349@sha256:d4d0c5bba0b1091e0d179845083c2f87dff7bf251055df5d00bc4326bd074591
           envFrom:
             - configMapRef:
                 name: fluxer-env
@@ -126,7 +126,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: unfurl-shard
-          image: ghcr.io/fluxerapp/fluxer-unfurl:2026.1010.212913@sha256:4917e2d9ad0a2b5b0043ca86b4573ee268e00faac1b902f4b33b3305ce013f91
+          image: ghcr.io/fluxerapp/fluxer-unfurl:2026.1012.111349@sha256:d4d0c5bba0b1091e0d179845083c2f87dff7bf251055df5d00bc4326bd074591
           envFrom:
             - configMapRef:
                 name: fluxer-env

@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: app-proxy
-          image: ghcr.io/fluxerapp/fluxer-app-proxy-self-hosted:2026.1011.135948@sha256:7398e9129f22e6bbcd5f9abdf6425bc47fd0f203b7fc7a551d34491422d39d8d
+          image: ghcr.io/fluxerapp/fluxer-app-proxy-self-hosted:2026.1019.95313@sha256:97cec59f5bcad8b727ca0ff96d58d8faf699e97338b81c33ad3d9023aa470fd2
           env:
             - name: FLUXER_APP_PROXY_PORT
               value: "8080"

@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: media-proxy
-          image: ghcr.io/fluxerapp/fluxer-media-proxy:2026.1011.124252@sha256:7cebb0a1154b90610451a26c987f9fc4de6e9901876ca916b387142188ea42bc
+          image: ghcr.io/fluxerapp/fluxer-media-proxy:2026.1013.32826@sha256:81d3f7ce2c181936cef2cba9364efeda29b7a0f77adfffe0696eecc717fb5024
           envFrom:
             - configMapRef:
                 name: fluxer-env

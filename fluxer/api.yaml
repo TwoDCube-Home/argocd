@@ -39,7 +39,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/fluxerapp/fluxer-api:2026.1011.125745@sha256:896a2ffdc9a79cec8e7b17462dbad95ffdca0c4b2618c79ba5cc0a5ce4a43b6d
+          image: ghcr.io/fluxerapp/fluxer-api:2026.1020.202514@sha256:06e6565ebd230360530ba1a89986c0f24e738b843c3fb00f31ce283f40f0cbb9
           envFrom:
             - configMapRef:
                 name: fluxer-env
@@ -68,6 +68,9 @@ spec:
                   key: AWS_SECRET_ACCESS_KEY
             - name: FLUXER_API_PORT
               value: "8080"
+            # FLUXER_SETUP_TOKEN (Compose passes it empty, api only) is deliberately
+            # unset; the README's setup checklist has what the API does with it on an
+            # instance whose admin already exists.
             - name: NODE_OPTIONS
               value: --enable-source-maps
             # Node trusts its built-in roots plus this file: the OpenShift service CA

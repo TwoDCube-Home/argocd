@@ -40,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: gateway
-          image: ghcr.io/fluxerapp/fluxer-gateway:2026.1011.135953@sha256:37e18b5aced3e8cc955bf7f5bef0132ed2d4f1d8d42cbc86ac8aace050ee1422
+          image: ghcr.io/fluxerapp/fluxer-gateway:2026.1012.111351@sha256:fcb22999f99d98c54a5a1eebaa4a8d9fd9947d18fb884a76a07961183ddbe879
           envFrom:
             - configMapRef:
                 name: fluxer-env
