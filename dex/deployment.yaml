@@ -34,11 +34,6 @@ spec:
                 secretKeyRef:
                   name: dex
                   key: openshift-client-secret
-            - name: DEX_TREK_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: dex
-                  key: trek-client-secret
           resources:
             requests:
               cpu: 25m
