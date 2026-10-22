@@ -125,14 +125,19 @@ credentials are not in 1Password; PGO and NooBaa generate them in-cluster.
    - **Setup token (upstream since 2026-10-13).** A new instance now refuses every
      registration until one presents `FLUXER_SETUP_TOKEN` (32–256 characters; the
      installer uses `openssl rand -hex 32`), and that registration becomes
-     admin. Unset, the API generates one on its first start and logs it once. This
-     instance's admin predates the feature, so the API does not know the admin
-     bootstrap happened: on the first start of an image from 2026-10-13 or later
-     it logs a generated token, and a registration that presents that token still
-     gets the wildcard admin ACL. Close the gate by re-saving the instance setup as
-     configured from the admin dashboard (`PATCH /admin/instance/config` with
+     admin. Unset, the API generates one on its first start and logs it once. The
+     gate hangs on an "admin bootstrapped" flag that the API has recorded since
+     before this instance existed, both when the first self-hosted account
+     registers and when the setup wizard is completed, so an instance set up
+     through the wizard already has the gate closed. The 2026-10-22 upgrade to the
+     2026-10-20 api confirmed this: it started without any setup-token message.
+     Still check the start-up log of `fluxer-api` after each api upgrade. A
+     `Setup token generated` warning means the gate is open, and a registration
+     presenting that token gets the wildcard admin ACL even in approval-only mode.
+     Close it by re-saving the instance setup as configured from the admin
+     dashboard (`PATCH /admin/instance/config` with
      `app_public.setup.configured: true` records the bootstrap and burns the
-     token), and treat `fluxer-api` logs as sensitive until then. The variable is
+     token), and treat the logs as sensitive until then. The variable is
      deliberately not in `externalsecret.yaml`: a value set there replaces the
      generated token but does not close the gate.
 3. **Account recovery:** email is disabled, so there is no email password reset.
