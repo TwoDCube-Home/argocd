@@ -1,0 +1,137 @@
+# Fluxer HTTP API (Node). Compose service `api`; reached by the edge at /api/* and
+# /.well-known/fluxer, and internally by admin, LiveKit webhooks and app-proxy's
+# discovery refresh.
+#
+# Every workload that Compose gives `x-fluxer-env` repeats the same four injected
+# variables below (Postgres URL + CA from Crunchy PGO, S3 keys from the fluxer-cdn
+# OBC) on top of the fluxer-env ConfigMap and the fluxer Secret. The repo uses plain
+# manifests, so the block is repeated rather than templated.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-api
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-api
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      # Required for every Fluxer pod: Service links would inject variables such as
+      # FLUXER_API_PORT=tcp://... and FLUXER_MEDIA_PROXY_PORT=tcp://..., which collide
+      # with Fluxer's own configuration names.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/fluxerapp/fluxer-api:2026.1011.125745@sha256:896a2ffdc9a79cec8e7b17462dbad95ffdca0c4b2618c79ba5cc0a5ce4a43b6d
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_API_PORT
+              value: "8080"
+            - name: NODE_OPTIONS
+              value: --enable-source-maps
+            # Node trusts its built-in roots plus this file: the OpenShift service CA
+            # that signs NooBaa's in-cluster S3 certificate.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/fluxer/service-ca/service-ca.crt
+            - name: FLUXER_POSTGRES_MAX_CONNECTIONS
+              value: "25"
+            - name: FLUXER_API_PRESIGNED_ATTACHMENT_UPLOADS_ENABLED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2560Mi
+          volumeMounts:
+            - name: service-ca
+              mountPath: /etc/fluxer/service-ca
+              readOnly: true
+      volumes:
+        - name: service-ca
+          configMap:
+            name: fluxer-service-ca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-api
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-api
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

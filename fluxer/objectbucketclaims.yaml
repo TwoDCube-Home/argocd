@@ -1,0 +1,68 @@
+# Object storage for Fluxer on NooBaa (ODF 4.22 Multicloud Object Gateway).
+#
+# Fluxer needs four pre-existing buckets that it reaches with ONE access key
+# (FLUXER_S3_ACCESS_KEY_ID/FLUXER_S3_SECRET_ACCESS_KEY). Per the ODF 4.22 docs
+# ("Object Bucket Claim"), every OBC creates its own bucket plus a NooBaa account
+# that can access only that single bucket. So:
+#   - fluxer-cdn's account is Fluxer's identity (its Secret feeds every workload);
+#   - bucket-policy-job.yaml grants that account access to the other three buckets
+#     with S3 bucket policies (ODF 4.22 "Bucket policies in the Multicloud Object
+#     Gateway"; OBC accounts are named obc-account.<bucket>@noobaa.io).
+#
+# bucketName is fixed (Fluxer's upstream defaults) so configmap-env.yaml can name
+# the buckets statically. NooBaa bucket names are cluster-wide.
+#
+# The openshift-storage.noobaa.io StorageClass uses reclaimPolicy Delete: deleting
+# an OBC deletes the bucket and every object in it. `Delete=false` keeps Argo CD
+# from removing them if the Application itself is deleted.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: fluxer-cdn
+  labels:
+    app: fluxer
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  # FLUXER_S3_BUCKET_CDN: avatars, guild assets, themes, processed attachments.
+  bucketName: fluxer
+  storageClassName: openshift-storage.noobaa.io
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: fluxer-uploads
+  labels:
+    app: fluxer
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  # FLUXER_S3_BUCKET_UPLOADS: raw attachment uploads before processing.
+  bucketName: fluxer-uploads
+  storageClassName: openshift-storage.noobaa.io
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: fluxer-reports
+  labels:
+    app: fluxer
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  # FLUXER_S3_BUCKET_REPORTS: abuse report evidence.
+  bucketName: fluxer-reports
+  storageClassName: openshift-storage.noobaa.io
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: fluxer-harvests
+  labels:
+    app: fluxer
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  # FLUXER_S3_BUCKET_HARVESTS: user and guild data export archives.
+  bucketName: fluxer-harvests
+  storageClassName: openshift-storage.noobaa.io

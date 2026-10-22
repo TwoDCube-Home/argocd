@@ -1,0 +1,142 @@
+# Fluxer media proxy (Rust) in `upload` mode: serves processed media at /media/*
+# and relays browser uploads into S3. Compose service `media-proxy`. It is the only
+# Rust service that talks to S3, so it is the only one that needs the service CA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-media-proxy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-media-proxy
+    app.kubernetes.io/component: media-proxy
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-media-proxy
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-media-proxy
+        app.kubernetes.io/component: media-proxy
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: media-proxy
+          image: ghcr.io/fluxerapp/fluxer-media-proxy:2026.1011.124252@sha256:7cebb0a1154b90610451a26c987f9fc4de6e9901876ca916b387142188ea42bc
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_MEDIA_PROXY_PORT
+              value: "8080"
+            - name: FLUXER_MEDIA_PROXY_MODE
+              value: upload
+            - name: FLUXER_MEDIA_PROXY_STORAGE_BACKEND
+              value: s3
+            - name: FLUXER_MEDIA_PROXY_CORS_ALLOWED_ORIGINS
+              value: https://fluxer.twodcube.dev:443
+            # NooBaa refuses anonymous reads, like the bundled SeaweedFS.
+            - name: FLUXER_S3_READ_SIGNED
+              value: "true"
+            # rustls-native-certs (via reqwest/rustls-platform-verifier) reads
+            # SSL_CERT_FILE *instead of* the system store, and adds every regular
+            # file found in SSL_CERT_DIR. Pointing the first at the image's system
+            # bundle and the second at the service CA keeps public roots (for
+            # proxying external media) and trusts NooBaa's in-cluster certificate.
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/ca-certificates.crt
+            - name: SSL_CERT_DIR
+              value: /etc/fluxer/service-ca
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: service-ca
+              mountPath: /etc/fluxer/service-ca
+              readOnly: true
+            # Upload relay spool (defaults to the temp dir). An emptyDir makes the
+            # space accounted and bounded instead of growing the container layer.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: service-ca
+          configMap:
+            name: fluxer-service-ca
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-media-proxy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-media-proxy
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-media-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

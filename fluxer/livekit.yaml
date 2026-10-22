@@ -1,0 +1,185 @@
+# LiveKit: voice/video SFU. Signalling (7880) is reached through the edge at
+# /livekit like in Compose; media needs 7881/tcp and 7882/udp reachable by clients
+# directly, which an OpenShift Route cannot carry.
+#
+# Media is exposed with MetalLB. Following the OCP 4.22 MetalLB docs for services
+# that need both TCP and UDP, there is one TCP and one UDP Service with the same
+# metallb.io/allow-shared-ip sharing key and the same spec.loadBalancerIP.
+# externalTrafficPolicy=Local keeps the client's source address, which ICE uses.
+#
+# use_external_ip (Compose's default) makes LiveKit advertise the address its STUN
+# servers see, i.e. the WAN address. Voice from outside the LAN therefore needs the
+# router to forward 7881/tcp and 7882/udp to 10.2.100.6; see README.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxer-livekit
+  labels:
+    app: fluxer
+data:
+  livekit.yaml: |
+    port: 7880
+    log_level: info
+    rtc:
+      tcp_port: 7881
+      udp_port: 7882
+      use_external_ip: true
+      stun_servers:
+        - stun.l.google.com:19302
+        - stun1.l.google.com:19302
+    webhook:
+      api_key: fluxer
+      urls:
+        - http://fluxer-api:8080/webhooks/livekit
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-livekit
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-livekit
+    app.kubernetes.io/component: livekit
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  # A single SFU node owns the fixed media ports; never run two side by side.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-livekit
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-livekit
+        app.kubernetes.io/component: livekit
+        app.kubernetes.io/part-of: fluxer
+      annotations:
+        # LiveKit reads its config only at start. Bump this when editing the
+        # fluxer-livekit ConfigMap so the pod restarts with it.
+        fluxer.twodcube.dev/config-revision: "1"
+    spec:
+      # Required: a Service named fluxer-livekit would otherwise inject
+      # FLUXER_LIVEKIT_* variables into every pod in the namespace.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: livekit
+          image: docker.io/livekit/livekit-server:v1.12.0@sha256:b1281e66e35e8f9749ffbcf0fe6ab4d40d1438aa00f36c2ea7e6975e5e261e2e
+          args: ["--config", "/etc/livekit/livekit.yaml"]
+          env:
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer
+                  key: FLUXER_LIVEKIT_API_SECRET
+            # "<key>: <secret>", the API key being the literal "fluxer" as in Compose.
+            - name: LIVEKIT_KEYS
+              value: "fluxer: $(LIVEKIT_API_SECRET)"
+          ports:
+            - name: signal
+              containerPort: 7880
+              protocol: TCP
+            - name: rtc-tcp
+              containerPort: 7881
+              protocol: TCP
+            - name: rtc-udp
+              containerPort: 7882
+              protocol: UDP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: signal
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: signal
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: fluxer-livekit
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-livekit
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-livekit
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-livekit
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: signal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-livekit-rtc-tcp
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-livekit
+    app.kubernetes.io/part-of: fluxer
+  annotations:
+    metallb.io/allow-shared-ip: fluxer-livekit
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.2.100.6
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: fluxer-livekit
+  ports:
+    - name: rtc-tcp
+      port: 7881
+      targetPort: rtc-tcp
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-livekit-rtc-udp
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-livekit
+    app.kubernetes.io/part-of: fluxer
+  annotations:
+    metallb.io/allow-shared-ip: fluxer-livekit
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.2.100.6
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: fluxer-livekit
+  ports:
+    - name: rtc-udp
+      port: 7882
+      targetPort: rtc-udp
+      protocol: UDP

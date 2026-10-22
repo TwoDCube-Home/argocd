@@ -1,0 +1,118 @@
+# Meilisearch: Fluxer's message/member/thread search. The index can be rebuilt from
+# Postgres, but nothing does that automatically (see upstream "Volumes and buckets"),
+# so it lives on a PVC. Environment mirrors Compose.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxer-meilisearch
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-meilisearch
+    app.kubernetes.io/component: meilisearch
+    app.kubernetes.io/part-of: fluxer
+spec:
+  serviceName: fluxer-meilisearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-meilisearch
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-meilisearch
+        app.kubernetes.io/component: meilisearch
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: meilisearch
+          image: docker.io/getmeili/meilisearch:v1.53@sha256:cf9bb47e8ecf080f0b3ca33f58a2f9d1e382d5479d360541df05e1c49841e4a9
+          env:
+            - name: MEILI_ENV
+              value: production
+            - name: MEILI_NO_ANALYTICS
+              value: "true"
+            # Lets a newer image upgrade an existing database in place on start.
+            - name: MEILI_UPGRADE_DB
+              value: "true"
+            - name: MEILI_MAX_INDEXING_MEMORY
+              value: 256mb
+            - name: MEILI_MAX_INDEXING_THREADS
+              value: "2"
+            - name: MEILI_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer
+                  key: FLUXER_SEARCH_API_KEY
+          ports:
+            - name: http
+              containerPort: 7700
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1536Mi
+          volumeMounts:
+            - name: data
+              mountPath: /meili_data
+  volumeClaimTemplates:
+    # apiVersion, kind and volumeMode are what the API server stores; spelling
+    # them out keeps Argo CD from reporting the StatefulSet as OutOfSync.
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        labels:
+          app: fluxer
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        volumeMode: Filesystem
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-meilisearch
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-meilisearch
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-meilisearch
+  ports:
+    - name: http
+      port: 7700
+      targetPort: http

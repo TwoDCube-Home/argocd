@@ -1,0 +1,29 @@
+# The Fluxer Route, split from applications/fluxer.yaml because its creation is
+# rejected until the fluxer-tls Secret (issued by cert-manager from the main app)
+# exists; see fluxer-route/route.yaml. The retry policy covers that window on a
+# fresh install (normally a couple of minutes for the DNS-01 challenge).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluxer-route
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    path: fluxer-route
+    repoURL: https://github.com/TwoDCube-Home/argocd
+  destination:
+    name: in-cluster
+    namespace: dev
+  syncPolicy:
+    automated: {}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 15
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m

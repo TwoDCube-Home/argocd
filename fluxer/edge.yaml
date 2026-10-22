@@ -1,0 +1,201 @@
+# Fluxer edge: upstream's Caddy router that fans the single public hostname out to
+# the services by path. This is the documented "behind your own reverse proxy"
+# layout (deploy/self-hosting/docker-compose.proxy.yml): the OpenShift Route
+# terminates TLS and sends everything to this plain-HTTP :8080 listener.
+#
+# The Caddyfile below is upstream deploy/self-hosting/Caddyfile verbatim except for
+# the upstream hostnames, which carry the `fluxer-` prefix used in this namespace.
+# When upgrading Fluxer, diff upstream's Caddyfile against this copy.
+#
+# OpenShift notes:
+#   - The official caddy binary has the cap_net_bind_service file capability. Under
+#     restricted-v2 (all capabilities dropped, no_new_privs) exec fails with
+#     "Operation not permitted" unless NET_BIND_SERVICE stays in the bounding set,
+#     so it is added back (restricted-v2 allows exactly this capability). Verified
+#     locally with podman.
+#   - trusted_proxies private_ranges covers the router: it runs on the host network
+#     and connects from the node addresses (10.2.1x.1), so X-Forwarded-For from the
+#     router is honoured and Fluxer sees real client addresses.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxer-edge
+  labels:
+    app: fluxer
+data:
+  Caddyfile: |
+    {
+    	servers {
+    		trusted_proxies static {$FLUXER_EDGE_TRUSTED_PROXIES:private_ranges}
+    		trusted_proxies_strict
+    	}
+    }
+
+    {$FLUXER_EDGE_SITE_ADDRESS} {
+    	encode {$FLUXER_EDGE_ENCODE:zstd gzip}
+
+    	handle /_health {
+    		respond "OK" 200
+    	}
+
+    	handle_path /api/* {
+    		reverse_proxy fluxer-api:8080
+    	}
+
+    	handle /gateway {
+    		rewrite * /
+    		reverse_proxy fluxer-gateway:8080
+    	}
+
+    	handle_path /gateway/* {
+    		reverse_proxy fluxer-gateway:8080
+    	}
+
+    	handle_path /media/* {
+    		reverse_proxy fluxer-media-proxy:8080
+    	}
+
+    	handle_path /livekit/* {
+    		reverse_proxy fluxer-livekit:7880
+    	}
+
+    	handle {$FLUXER_ADMIN_BASE_PATH:/admin} {
+    		rewrite * /
+    		reverse_proxy fluxer-admin:8080
+    	}
+
+    	handle_path {$FLUXER_ADMIN_BASE_PATH:/admin}/* {
+    		reverse_proxy fluxer-admin:8080
+    	}
+
+    	@staticAssets path /web/* /emoji/* /libs/* /avatars/* /badges/* /desktop/*
+    	handle @staticAssets {
+    		reverse_proxy fluxer-static-proxy:8080
+    	}
+
+    	handle /.well-known/fluxer {
+    		reverse_proxy fluxer-api:8080
+    	}
+
+    	handle {
+    		reverse_proxy fluxer-app-proxy:8080
+    	}
+    }
+
+    :8088 {
+    	handle /.well-known/fluxer {
+    		reverse_proxy fluxer-api:8080
+    	}
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-edge
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-edge
+    app.kubernetes.io/component: edge
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-edge
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-edge
+        app.kubernetes.io/component: edge
+        app.kubernetes.io/part-of: fluxer
+      annotations:
+        # Caddy reads the Caddyfile only at start. Bump this when editing the
+        # fluxer-edge ConfigMap so the pod restarts with it.
+        fluxer.twodcube.dev/config-revision: "1"
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: edge
+          image: docker.io/library/caddy:2.11-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+          env:
+            # docker-compose.proxy.yml: plain HTTP on :8080, TLS ends at the Route.
+            - name: FLUXER_EDGE_SITE_ADDRESS
+              value: ":8080"
+            - name: FLUXER_EDGE_TRUSTED_PROXIES
+              value: private_ranges
+            - name: FLUXER_EDGE_ENCODE
+              value: zstd gzip
+            - name: FLUXER_ADMIN_BASE_PATH
+              value: /admin
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: discovery
+              containerPort: 8088
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: caddy-config
+              mountPath: /config
+            - name: caddy-data
+              mountPath: /data
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: fluxer-edge
+        - name: caddy-config
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: caddy-data
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-edge
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-edge
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-edge
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: discovery
+      port: 8088
+      targetPort: discovery

@@ -1,0 +1,30 @@
+# Valkey and NATS run without authentication in the upstream stack (Compose isolates
+# them on a private bridge network instead). In the shared `dev` namespace any pod
+# could otherwise reach them, so only Fluxer's own pods (label app=fluxer) may
+# connect. Meilisearch is included as defence in depth even though it has a key.
+#
+# Only the selected backend pods are affected; the rest of `dev` keeps its
+# default allow-all behaviour. Kubelet probes are unaffected (exec probes, and
+# OVN-Kubernetes always admits node-to-pod health checks).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fluxer-backends
+  labels:
+    app: fluxer
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - valkey
+          - nats
+          - meilisearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: fluxer

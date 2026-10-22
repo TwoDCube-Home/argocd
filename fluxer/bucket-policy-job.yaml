@@ -1,0 +1,318 @@
+# Bucket policies that let Fluxer's single S3 identity reach all four buckets.
+#
+# NooBaa gives each ObjectBucketClaim an account that can access only its own
+# bucket (ODF 4.22 docs, "Object Bucket Claim"), but Fluxer signs every request
+# with one key pair. Fluxer uses the fluxer-cdn OBC's account; this Job has each
+# of the other three buckets' OBC accounts attach a policy granting that account
+# s3:* on their bucket (ODF 4.22 docs, "Bucket policies in the Multicloud Object
+# Gateway"; policy conditions are not supported).
+#
+# Principals, as verified against this cluster's NooBaa (ODF 4.22.5): the docs'
+# example uses the account name (obc-account.<bucket>...@noobaa.io), but NooBaa
+# rejects names with "MalformedPolicy: Invalid principal in policy". It accepts
+# the account's IAM ARN (arn:aws:iam::<account-id>:root). An OBC account cannot
+# discover its own ID through the S3/STS/IAM APIs (NotImplemented/AccessDenied),
+# and it is only published on the cluster-scoped ObjectBucket, which this
+# namespace-scoped Argo CD cannot be granted access to. So the ARNs are recorded
+# in the fluxer-s3-accounts ConfigMap below.
+#
+# The ARNs stay valid for the life of each OBC. If an OBC is ever recreated it gets
+# a new account, the end-to-end check below fails the Job (and the Argo CD sync),
+# and the ConfigMap must be refreshed:
+#   for o in cdn uploads reports harvests; do
+#     oc get objectbucket obc-dev-fluxer-$o -o jsonpath='{.spec.additionalState.arn}{"\n"}'
+#   done
+#
+# The Job runs as an Argo CD Sync hook, so the policies are re-applied (idempotent
+# put-bucket-policy) on every sync. It then proves end to end, with Fluxer's own
+# credentials, that every bucket accepts put/head/delete. A failure fails the Job
+# and therefore the sync, instead of surfacing later as broken uploads.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxer-s3-accounts
+  labels:
+    app: fluxer
+data:
+  # spec.additionalState.arn of ObjectBucket obc-dev-fluxer-<name> (not secret).
+  CDN_ACCOUNT_ARN: arn:aws:iam::6acbb4a4ca32ad001d856ba6:root
+  UPLOADS_ACCOUNT_ARN: arn:aws:iam::6acbb4a6ca32ad001d856bba:root
+  REPORTS_ACCOUNT_ARN: arn:aws:iam::6acbb4a5ca32ad001d856bb0:root
+  HARVESTS_ACCOUNT_ARN: arn:aws:iam::6acbb4a3ca32ad001d856b9c:root
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxer-s3-bucket-policy
+  labels:
+    app: fluxer
+data:
+  apply-bucket-policies.sh: |
+    #!/bin/bash
+    # Applies the NooBaa bucket policies Fluxer needs and verifies access.
+    #
+    # Required environment:
+    #   S3_ENDPOINT   NooBaa S3 URL (https://s3.openshift-storage.svc:443)
+    #   CA_BUNDLE     PEM file that verifies S3_ENDPOINT (OpenShift service CA)
+    #   For P in CDN (Fluxer's identity, the grantee) and UPLOADS, REPORTS,
+    #   HARVESTS (the accounts that attach the policy to their own bucket):
+    #     <P>_BUCKET, <P>_ACCESS_KEY_ID, <P>_SECRET_ACCESS_KEY
+    #                 from the OBC ConfigMap/Secret of the same name
+    #     <P>_ACCOUNT_ARN
+    #                 from the fluxer-s3-accounts ConfigMap
+    set -euo pipefail
+
+    prefixes=(UPLOADS REPORTS HARVESTS)
+    refresh_hint="refresh fluxer-s3-accounts from: oc get objectbucket obc-dev-fluxer-<name> -o jsonpath='{.spec.additionalState.arn}'"
+
+    require_env() {
+      local missing=()
+      local name
+      for name in "$@"; do
+        [ -n "${!name:-}" ] || missing+=("$name")
+      done
+      if [ "${#missing[@]}" -gt 0 ]; then
+        echo "error: missing required environment: ${missing[*]}" >&2
+        echo "       check that the fluxer-* ObjectBucketClaims are Bound and their Secrets/ConfigMaps exist," >&2
+        echo "       and that the fluxer-s3-accounts ConfigMap is complete" >&2
+        exit 2
+      fi
+    }
+
+    required=(S3_ENDPOINT CA_BUNDLE)
+    for p in CDN "${prefixes[@]}"; do
+      required+=("${p}_BUCKET" "${p}_ACCESS_KEY_ID" "${p}_SECRET_ACCESS_KEY" "${p}_ACCOUNT_ARN")
+    done
+    require_env "${required[@]}"
+
+    for p in CDN "${prefixes[@]}"; do
+      arn_var="${p}_ACCOUNT_ARN"
+      if ! [[ "${!arn_var}" =~ ^arn:aws:iam::[0-9a-f]{24}:root$ ]]; then
+        echo "error: ${arn_var}='${!arn_var}' is not a NooBaa account ARN (arn:aws:iam::<24 hex>:root)" >&2
+        echo "       ${refresh_hint}" >&2
+        exit 2
+      fi
+    done
+
+    if [ ! -s "$CA_BUNDLE" ]; then
+      echo "error: CA bundle $CA_BUNDLE is missing or empty; has the service-ca operator injected the fluxer-service-ca ConfigMap?" >&2
+      exit 2
+    fi
+
+    # s3 <access-key-id> <secret-access-key> <aws args...>
+    # Credentials are passed per call so the owner and grantee identities never mix.
+    s3() {
+      local key_id=$1 secret=$2
+      shift 2
+      AWS_ACCESS_KEY_ID="$key_id" AWS_SECRET_ACCESS_KEY="$secret" \
+        aws --endpoint-url "$S3_ENDPOINT" --ca-bundle "$CA_BUNDLE" --no-cli-pager "$@"
+    }
+
+    grantee="$CDN_ACCOUNT_ARN"
+
+    # policy_for <bucket> <owner-arn>: the bucket's own OBC account keeps full
+    # access, and Fluxer's identity (the CDN OBC account) gets full access too.
+    policy_for() {
+      local bucket=$1 owner=$2
+      cat <<EOF
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "BucketOwner",
+          "Effect": "Allow",
+          "Principal": {"AWS": ["${owner}"]},
+          "Action": ["s3:*"],
+          "Resource": ["arn:aws:s3:::${bucket}", "arn:aws:s3:::${bucket}/*"]
+        },
+        {
+          "Sid": "FluxerSharedIdentity",
+          "Effect": "Allow",
+          "Principal": {"AWS": ["${grantee}"]},
+          "Action": ["s3:*"],
+          "Resource": ["arn:aws:s3:::${bucket}", "arn:aws:s3:::${bucket}/*"]
+        }
+      ]
+    }
+    EOF
+    }
+
+    for p in "${prefixes[@]}"; do
+      bucket_var="${p}_BUCKET"
+      key_var="${p}_ACCESS_KEY_ID"
+      secret_var="${p}_SECRET_ACCESS_KEY"
+      owner_var="${p}_ACCOUNT_ARN"
+      bucket="${!bucket_var}"
+      if ! s3 "${!key_var}" "${!secret_var}" s3api put-bucket-policy \
+        --bucket "$bucket" --policy "$(policy_for "$bucket" "${!owner_var}")"; then
+        echo "error: could not set the policy on ${bucket}; if NooBaa reports an invalid principal, ${refresh_hint}" >&2
+        exit 1
+      fi
+      echo "policy applied: ${bucket} grants s3:* to ${grantee}"
+    done
+
+    # End-to-end proof with Fluxer's own credentials on every bucket it uses.
+    probe_file=$(mktemp)
+    trap 'rm -f "$probe_file"' EXIT
+    printf 'fluxer access probe\n' >"$probe_file"
+    probe_key=".fluxer-access-probe/${HOSTNAME:-job}"
+    for p in CDN "${prefixes[@]}"; do
+      bucket_var="${p}_BUCKET"
+      bucket="${!bucket_var}"
+      if ! { s3 "$CDN_ACCESS_KEY_ID" "$CDN_SECRET_ACCESS_KEY" s3api put-object \
+               --bucket "$bucket" --key "$probe_key" --body "$probe_file" >/dev/null &&
+             s3 "$CDN_ACCESS_KEY_ID" "$CDN_SECRET_ACCESS_KEY" s3api head-object \
+               --bucket "$bucket" --key "$probe_key" >/dev/null &&
+             s3 "$CDN_ACCESS_KEY_ID" "$CDN_SECRET_ACCESS_KEY" s3api delete-object \
+               --bucket "$bucket" --key "$probe_key" >/dev/null; }; then
+        echo "error: Fluxer's identity (fluxer-cdn) cannot use ${bucket}; if an OBC was recreated, ${refresh_hint}" >&2
+        exit 1
+      fi
+      echo "verified: Fluxer identity can put/head/delete in ${bucket}"
+    done
+    echo "all Fluxer buckets are reachable with the fluxer-cdn credentials"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fluxer-s3-bucket-policy
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-s3-bucket-policy
+    app.kubernetes.io/component: s3-bucket-policy
+    app.kubernetes.io/part-of: fluxer
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  # The pod waits in CreateContainerConfigError until NooBaa has bound the OBCs and
+  # written their Secrets, so it needs no ordering of its own; the deadline only
+  # bounds a genuinely stuck run.
+  backoffLimit: 4
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-s3-bucket-policy
+        app.kubernetes.io/component: s3-bucket-policy
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: apply
+          image: docker.io/amazon/aws-cli:2.37.12@sha256:ce44b800602264c12298bbf3399055a4cefdb9ed4a098abe564afe26e7071bce
+          command: ["/bin/bash", "/scripts/apply-bucket-policies.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          # CDN/UPLOADS/REPORTS/HARVESTS_ACCOUNT_ARN (policy principals).
+          envFrom:
+            - configMapRef:
+                name: fluxer-s3-accounts
+          env:
+            - name: S3_ENDPOINT
+              value: https://s3.openshift-storage.svc:443
+            - name: CA_BUNDLE
+              value: /etc/fluxer/service-ca/service-ca.crt
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            # The image's default HOME is not writable under a random OpenShift UID.
+            - name: HOME
+              value: /tmp
+            - name: CDN_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxer-cdn
+                  key: BUCKET_NAME
+            - name: CDN_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: CDN_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: UPLOADS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxer-uploads
+                  key: BUCKET_NAME
+            - name: UPLOADS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-uploads
+                  key: AWS_ACCESS_KEY_ID
+            - name: UPLOADS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-uploads
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: REPORTS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxer-reports
+                  key: BUCKET_NAME
+            - name: REPORTS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-reports
+                  key: AWS_ACCESS_KEY_ID
+            - name: REPORTS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-reports
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: HARVESTS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxer-harvests
+                  key: BUCKET_NAME
+            - name: HARVESTS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-harvests
+                  key: AWS_ACCESS_KEY_ID
+            - name: HARVESTS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-harvests
+                  key: AWS_SECRET_ACCESS_KEY
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: service-ca
+              mountPath: /etc/fluxer/service-ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: scripts
+          configMap:
+            name: fluxer-s3-bucket-policy
+        - name: service-ca
+          configMap:
+            name: fluxer-service-ca
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

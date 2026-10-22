@@ -1,0 +1,151 @@
+# Fluxer realtime gateway (Erlang/OTP release). Compose service `gateway`; clients
+# reach it as a WebSocket through the edge at /gateway. Runs as a single standalone
+# node like Compose (no clustering), hence the Recreate strategy.
+#
+# OpenShift note: the image's relx start script renders vm.args into
+# /opt/fluxer_gateway/releases/<vsn>/, which belongs to UID 65532 and is not
+# writable by the random UID that the restricted-v2 SCC assigns. The script writes to
+# RELX_OUT_FILE_PATH instead when that directory exists, so an emptyDir is mounted
+# there. Verified locally: the image fails as an arbitrary UID without it and
+# starts with it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxer-gateway
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: fluxer
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxer-gateway
+  template:
+    metadata:
+      labels:
+        app: fluxer
+        app.kubernetes.io/name: fluxer-gateway
+        app.kubernetes.io/component: gateway
+        app.kubernetes.io/part-of: fluxer
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: ghcr.io/fluxerapp/fluxer-gateway:2026.1011.135953@sha256:37e18b5aced3e8cc955bf7f5bef0132ed2d4f1d8d42cbc86ac8aace050ee1422
+          envFrom:
+            - configMapRef:
+                name: fluxer-env
+            # Includes FLUXER_ERLANG_COOKIE, which the entrypoint requires.
+            - secretRef:
+                name: fluxer
+          env:
+            - name: FLUXER_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-pguser-fluxer
+                  key: uri
+            - name: FLUXER_POSTGRES_SSL_CA
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-postgres-cluster-cert
+                  key: ca.crt
+            - name: FLUXER_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_ACCESS_KEY_ID
+            - name: FLUXER_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fluxer-cdn
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: FLUXER_GATEWAY_PORT
+              value: "8080"
+            - name: FLUXER_GATEWAY_MEDIA_PROXY_ENDPOINT
+              value: https://fluxer.twodcube.dev/media
+            - name: FLUXER_GATEWAY_STATIC_CDN_ENDPOINT
+              value: https://fluxer.twodcube.dev
+            - name: RELX_OUT_FILE_PATH
+              value: /run/fluxer-gateway
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # Let in-flight sessions drain before SIGTERM (same hook as upstream's chart).
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - curl -fsS -o /dev/null --max-time 2 http://127.0.0.1:8080/_health/drain; sleep 5
+          startupProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          # Compose's healthcheck; /_health/ready reports whether the node accepts
+          # sessions. It answers loopback callers only (a kubelet httpGet from the
+          # node address gets 403), so probe it from inside the container like
+          # Compose and upstream's own Helm chart do.
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -fsS
+                - -o
+                - /dev/null
+                - --max-time
+                - "2"
+                - http://127.0.0.1:8080/_health/ready
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: relx-out
+              mountPath: /run/fluxer-gateway
+      volumes:
+        - name: relx-out
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxer-gateway
+  labels:
+    app: fluxer
+    app.kubernetes.io/name: fluxer-gateway
+    app.kubernetes.io/part-of: fluxer
+spec:
+  selector:
+    app.kubernetes.io/name: fluxer-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
