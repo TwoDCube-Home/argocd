@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: users
-          image: ghcr.io/fluxerapp/fluxer-users:2026.1010.212851@sha256:6a96cd3f7edf3c5391c60a5c428174e371a4fb0e6cf0962eb8bc3a19eee500f7
+          image: ghcr.io/fluxerapp/fluxer-users:2026.1012.111317@sha256:0dd9fef4ff4083b89632f232547a1264f738c63384f60c1cf0a986403e88d334
           envFrom:
             - configMapRef:
                 name: fluxer-env
@@ -126,7 +126,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: users-shard
-          image: ghcr.io/fluxerapp/fluxer-users:2026.1010.212851@sha256:6a96cd3f7edf3c5391c60a5c428174e371a4fb0e6cf0962eb8bc3a19eee500f7
+          image: ghcr.io/fluxerapp/fluxer-users:2026.1012.111317@sha256:0dd9fef4ff4083b89632f232547a1264f738c63384f60c1cf0a986403e88d334
           envFrom:
             - configMapRef:
                 name: fluxer-env

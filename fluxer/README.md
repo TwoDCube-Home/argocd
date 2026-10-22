@@ -30,16 +30,19 @@ LiveKit, and assume ingress-nginx.
 | `.env` | `configmap-env.yaml` + `externalsecret.yaml` | Non-secret config / 1Password secrets |
 
 Images are pinned to the upstream CalVer tag **and** digest that `v1` pointed at
-when this was written (2026-10-11). Third-party images are pinned the same way.
+when they were last bumped (2026-10-22). Third-party images are pinned the same way.
 
 **Upstream revision:** these manifests mirror `deploy/self-hosting/` of
 [fluxerapp/fluxer](https://github.com/fluxerapp/fluxer) at commit
-[`20e347439362dedd361d606597fd272be3dad605`](https://github.com/fluxerapp/fluxer/tree/20e347439362dedd361d606597fd272be3dad605/deploy/self-hosting)
-(2026-10-11, the last change to `docker-compose.yml` before the translation). The
-newest pinned images were built from `50c28aa8fa0c40c434370d12df2f7d30968081cb`,
-three commits later with no change under `deploy/self-hosting/` in between. Each
-image records the commit it was built from in its
-`org.opencontainers.image.revision` label. Update this commit when upgrading.
+[`557efe1c7d238fb19a3cab9e99f4dc4f83c3b113`](https://github.com/fluxerapp/fluxer/tree/557efe1c7d238fb19a3cab9e99f4dc4f83c3b113/deploy/self-hosting)
+(2026-10-17, the last change under `deploy/self-hosting/` at the time of the
+2026-10-22 sync). Upstream builds each image when its component changes, so the
+pinned images carry different revisions; the newest, `fluxer-api`, was built from
+`65faf056b9fd264565db937e7d08b73bb9337d77` (2026-10-20, 30 commits later with no
+change under `deploy/self-hosting/` in between). Each image records the commit it
+was built from in its `org.opencontainers.image.revision` label. Update this
+paragraph when upgrading. The first translation was made from
+`20e347439362dedd361d606597fd272be3dad605` (2026-10-11).
 
 ## Deviations from Compose, and why
 
@@ -119,6 +122,19 @@ credentials are not in 1Password; PGO and NooBaa generate them in-cluster.
    the wizard was done from the LAN. The annotation was removed afterwards (git
    history has it). Restore it before Fluxer starts against an empty database
    again, such as a rebuild without a Postgres restore.
+   - **Setup token (upstream since 2026-10-13).** A new instance now refuses every
+     registration until one presents `FLUXER_SETUP_TOKEN` (32–256 characters; the
+     installer uses `openssl rand -hex 32`), and that registration becomes
+     admin. Unset, the API generates one on its first start and logs it once. This
+     instance's admin predates the feature, so the API does not know the admin
+     bootstrap happened: on the first start of an image from 2026-10-13 or later
+     it logs a generated token, and a registration that presents that token still
+     gets the wildcard admin ACL. Close the gate by re-saving the instance setup as
+     configured from the admin dashboard (`PATCH /admin/instance/config` with
+     `app_public.setup.configured: true` records the bootstrap and burns the
+     token), and treat `fluxer-api` logs as sensitive until then. The variable is
+     deliberately not in `externalsecret.yaml`: a value set there replaces the
+     generated token but does not close the gate.
 3. **Account recovery:** email is disabled, so there is no email password reset.
    Register a passkey or a second admin before opening registration (upstream
    advice).
@@ -127,7 +143,8 @@ credentials are not in 1Password; PGO and NooBaa generate them in-cluster.
    voice region comes from `FLUXER_LIVEKIT_DEFAULT_REGION`. If voice still does not
    connect, check the voice regions and servers in the admin dashboard.
 5. **Optional:** a Klipy API key (`FLUXER_KLIPY_API_KEY`) for GIF search, and SMTP
-   settings for email. Both are unset in Compose too.
+   settings for email, including upstream's domain-routed fallback SMTP provider
+   (`FLUXER_EMAIL_FALLBACK_*`, 2026-10-17). All are unset in Compose too.
 
 ## Operations
 

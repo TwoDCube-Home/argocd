@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: admin
-          image: ghcr.io/fluxerapp/fluxer-admin:2026.1011.140011@sha256:83c60d497bc42aa166fc340857d6ed5430207095898aac0a99dfade94aa8f82c
+          image: ghcr.io/fluxerapp/fluxer-admin:2026.1017.35317@sha256:e7bea2fd3833613695fbea4034cb1c3094379c54bc507e4462c01afd6a6864e5
           envFrom:
             - configMapRef:
                 name: fluxer-env

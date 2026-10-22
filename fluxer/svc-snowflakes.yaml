@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: snowflakes
-          image: ghcr.io/fluxerapp/fluxer-snowflakes:2026.1010.212912@sha256:ce6f5a9de53c6c5e329de40cc602b51c02d654b028dc74687a4a8e730d4a98b0
+          image: ghcr.io/fluxerapp/fluxer-snowflakes:2026.1012.111327@sha256:7b6f57fb40a982f1c8b9222ce7a36a1cd52648892baf51b86d3e81e590c91217
           envFrom:
             - configMapRef:
                 name: fluxer-env
@@ -133,7 +133,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: snowflakes-shard
-          image: ghcr.io/fluxerapp/fluxer-snowflakes:2026.1010.212912@sha256:ce6f5a9de53c6c5e329de40cc602b51c02d654b028dc74687a4a8e730d4a98b0
+          image: ghcr.io/fluxerapp/fluxer-snowflakes:2026.1012.111327@sha256:7b6f57fb40a982f1c8b9222ce7a36a1cd52648892baf51b86d3e81e590c91217
           envFrom:
             - configMapRef:
                 name: fluxer-env

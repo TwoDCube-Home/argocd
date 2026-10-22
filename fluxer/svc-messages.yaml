@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: messages
-          image: ghcr.io/fluxerapp/fluxer-messages:2026.1011.113418@sha256:f4a0d1068133b77d3848eb48e118f94bb60e87fbee9a32d553d481c5a7c60db2
+          image: ghcr.io/fluxerapp/fluxer-messages:2026.1012.111357@sha256:325ab67cd97ca991fda43c6bd532eae6ca29cce46d83507158ad09d8fe001064
           envFrom:
             - configMapRef:
                 name: fluxer-env
@@ -126,7 +126,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: messages-shard
-          image: ghcr.io/fluxerapp/fluxer-messages:2026.1011.113418@sha256:f4a0d1068133b77d3848eb48e118f94bb60e87fbee9a32d553d481c5a7c60db2
+          image: ghcr.io/fluxerapp/fluxer-messages:2026.1012.111357@sha256:325ab67cd97ca991fda43c6bd532eae6ca29cce46d83507158ad09d8fe001064
           envFrom:
             - configMapRef:
                 name: fluxer-env

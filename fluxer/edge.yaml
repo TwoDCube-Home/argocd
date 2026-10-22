@@ -7,6 +7,11 @@
 # the upstream hostnames, which carry the `fluxer-` prefix used in this namespace.
 # When upgrading Fluxer, diff upstream's Caddyfile against this copy.
 #
+# FLUXER_EDGE_GLOBAL_OPTIONS (extra Caddy global options, in upstream's Caddyfile
+# since 2026-10) is deliberately not set: Caddy expands the unset placeholder to
+# nothing, exactly like Compose's empty default. Its use case is an ACME account
+# email, and TLS ends at the OpenShift Route here.
+#
 # OpenShift notes:
 #   - The official caddy binary has the cap_net_bind_service file capability. Under
 #     restricted-v2 (all capabilities dropped, no_new_privs) exec fails with
@@ -29,6 +34,7 @@ data:
     		trusted_proxies static {$FLUXER_EDGE_TRUSTED_PROXIES:private_ranges}
     		trusted_proxies_strict
     	}
+    	{$FLUXER_EDGE_GLOBAL_OPTIONS}
     }
 
     {$FLUXER_EDGE_SITE_ADDRESS} {
@@ -112,7 +118,7 @@ spec:
       annotations:
         # Caddy reads the Caddyfile only at start. Bump this when editing the
         # fluxer-edge ConfigMap so the pod restarts with it.
-        fluxer.twodcube.dev/config-revision: "1"
+        fluxer.twodcube.dev/config-revision: "2"
     spec:
       enableServiceLinks: false
       automountServiceAccountToken: false
