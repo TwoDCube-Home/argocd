@@ -32,6 +32,15 @@ LiveKit, and assume ingress-nginx.
 Images are pinned to the upstream CalVer tag **and** digest that `v1` pointed at
 when this was written (2026-10-11). Third-party images are pinned the same way.
 
+**Upstream revision:** these manifests mirror `deploy/self-hosting/` of
+[fluxerapp/fluxer](https://github.com/fluxerapp/fluxer) at commit
+[`20e347439362dedd361d606597fd272be3dad605`](https://github.com/fluxerapp/fluxer/tree/20e347439362dedd361d606597fd272be3dad605/deploy/self-hosting)
+(2026-10-11, the last change to `docker-compose.yml` before the translation). The
+newest pinned images were built from `50c28aa8fa0c40c434370d12df2f7d30968081cb`,
+three commits later with no change under `deploy/self-hosting/` in between. Each
+image records the commit it was built from in its
+`org.opencontainers.image.revision` label. Update this commit when upgrading.
+
 ## Deviations from Compose, and why
 
 - **Names carry a `fluxer-` prefix** (`fluxer-api`, `fluxer-nats`, …) because the
@@ -125,8 +134,11 @@ credentials are not in 1Password; PGO and NooBaa generate them in-cluster.
 - **Upgrading Fluxer:** for each image, resolve the digest behind `v1` and its
   `org.opencontainers.image.version` label (that CalVer tag points at the same
   digest), then update `image:` in the matching file. Before bumping, diff
-  upstream's `docker-compose.yml`, `.env.example` and `Caddyfile` for new or renamed
-  settings, and read the [upgrading guide](https://docs.fluxer.app/operator/upgrading/).
+  upstream's `deploy/self-hosting/` (`docker-compose.yml`, `.env.example`,
+  `Caddyfile`) from the upstream revision recorded above to the new images'
+  `org.opencontainers.image.revision` for new or renamed settings, read the
+  [upgrading guide](https://docs.fluxer.app/operator/upgrading/), and record the
+  new revision above.
   Upstream rollbacks do not undo database migrations, so take a pgBackRest backup
   first.
 - **Config changes to `fluxer-edge` or `fluxer-livekit`:** Caddy and LiveKit read
